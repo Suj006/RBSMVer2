@@ -49,10 +49,10 @@ export async function StaffDashboard({ role, base }: { role: Role; base: string 
   const stats = [
         // Row 1 — basic details
         { label: "Total sign-ups", value: total, accent: "blue" as const, href: `${base}/buyers` },
-        { label: "Basic details not submitted / returned", value: count("SIGNED_UP", "BASIC_RETURNED"), accent: "slate" as const,
+        { label: "Applications not yet submitted", value: count("SIGNED_UP", "BASIC_RETURNED"), accent: "slate" as const,
           hint: count("BASIC_RETURNED") ? `${count("BASIC_RETURNED")} returned for correction` : undefined, href: `${base}/buyers?status=basic_pending` },
-        { label: "Basic details to verify", value: count("BASIC_SUBMITTED"), accent: "yellow" as const, href: `${base}/buyers?status=BASIC_SUBMITTED` },
-        { label: "Basic details approved", value: count("BASIC_APPROVED", "APPROVED"), accent: "green" as const,
+        { label: "Applications to verify", value: count("BASIC_SUBMITTED"), accent: "yellow" as const, href: `${base}/buyers?status=BASIC_SUBMITTED` },
+        { label: "Verified by FIEO", value: count("BASIC_APPROVED", "APPROVED"), accent: "green" as const,
           hint: `${count("APPROVED")} already approved buyers`, href: `${base}/buyers?status=basic_approved` },
         // Row 2 — sector requirements
         { label: "Sectors pending with FIEO", value: items(...FIEO_ITEM_QUEUE), accent: "yellow" as const, hint: items("DIC_RETURNED") ? `${items("DIC_RETURNED")} returned by Directorate` : undefined,
@@ -63,9 +63,9 @@ export async function StaffDashboard({ role, base }: { role: Role; base: string 
       ];
 
   const buyerPipeline = [
-    { label: "Basic details pending", value: count("SIGNED_UP", "BASIC_RETURNED"), color: "bg-slate-400", href: `${base}/buyers?status=basic_pending` },
-    { label: "Basic under review", value: count("BASIC_SUBMITTED"), color: "bg-tx-yellow", href: `${base}/buyers?status=BASIC_SUBMITTED` },
-    { label: "Requirement stage", value: count("BASIC_APPROVED"), color: "bg-tx-blue", href: `${base}/buyers?status=BASIC_APPROVED` },
+    { label: "Application not submitted", value: count("SIGNED_UP", "BASIC_RETURNED"), color: "bg-slate-400", href: `${base}/buyers?status=basic_pending` },
+    { label: "With FIEO", value: count("BASIC_SUBMITTED"), color: "bg-tx-yellow", href: `${base}/buyers?status=BASIC_SUBMITTED` },
+    { label: "Sectors in approval", value: count("BASIC_APPROVED"), color: "bg-tx-blue", href: `${base}/buyers?status=BASIC_APPROVED` },
     { label: "Approved buyers", value: count("APPROVED"), color: "bg-tx-green", href: `${base}/buyers?status=APPROVED` },
   ];
   const itemPipeline = (Object.keys(ITEM_META) as ItemStatus[]).map((s) => ({
@@ -111,9 +111,9 @@ export async function StaffDashboard({ role, base }: { role: Role; base: string 
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <PendingNow title="Buyers pending now" rows={[
-          { group: "Basic details", label: "Signed up, not yet submitted", value: count("SIGNED_UP"), href: `${base}/buyers?status=SIGNED_UP`, dot: "bg-slate-400" },
-          { group: "Basic details", label: "Returned to buyer for correction", value: count("BASIC_RETURNED"), href: `${base}/buyers?status=BASIC_RETURNED`, dot: "bg-tx-red" },
-          { group: "Basic details", label: "Awaiting FIEO verification", value: count("BASIC_SUBMITTED"), href: `${base}/buyers?status=BASIC_SUBMITTED`, dot: "bg-tx-yellow" },
+          { group: "Application", label: "Signed up, not yet submitted", value: count("SIGNED_UP"), href: `${base}/buyers?status=SIGNED_UP`, dot: "bg-slate-400" },
+          { group: "Application", label: "Returned to buyer for correction", value: count("BASIC_RETURNED"), href: `${base}/buyers?status=BASIC_RETURNED`, dot: "bg-tx-red" },
+          { group: "Application", label: "Awaiting FIEO verification", value: count("BASIC_SUBMITTED"), href: `${base}/buyers?status=BASIC_SUBMITTED`, dot: "bg-tx-yellow" },
           { group: "Sector requirements", label: "Draft, not yet submitted", value: items("DRAFT"), href: `${base}/requirements?item=DRAFT`, dot: "bg-slate-400" },
           { group: "Sector requirements", label: "Returned to buyer", value: items("FIEO_RETURNED"), href: `${base}/requirements?item=FIEO_RETURNED`, dot: "bg-tx-red" },
           { group: "Sector requirements", label: "Awaiting FIEO", value: items("SUBMITTED"), href: `${base}/requirements?item=SUBMITTED`, dot: "bg-tx-yellow" },

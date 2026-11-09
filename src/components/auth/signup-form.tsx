@@ -33,7 +33,7 @@ export function SignupForm() {
           )}
         </div>
         <p className="text-sm text-slate-500">
-          On first sign-in you will be asked to set a new password, then to complete your basic details for FIEO verification.
+          On first sign-in you will be asked to set a new password, then to complete your application (basic details, sourcing profile and sector requirements) and submit it to FIEO.
         </p>
         <ButtonLink href="/login" className="w-full">Continue to sign in</ButtonLink>
       </div>

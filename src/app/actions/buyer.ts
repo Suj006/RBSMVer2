@@ -5,7 +5,8 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireBuyer } from "@/lib/auth";
 import { COUNTRIES } from "@/lib/countries";
-import { canEditBasic, canWorkOnRequirements, ITEM_EDITABLE } from "@/lib/status";
+import { canEditApplication, canRequestChange, canSubmitItems, ITEM_EDITABLE, ITEM_TO_SUBMIT } from "@/lib/status";
+import { parseChange, type BasicFields, type BuyerChange, type ProfileFields } from "@/lib/buyer-change";
 import { parseCerts } from "@/lib/format";
 import { deleteUpload, storeUpload, validateUpload } from "@/lib/storage";
 import type { DocumentKind } from "@/generated/prisma/enums";
@@ -32,7 +33,7 @@ const basicDraft = z.object({
   pocMobile: optional(mobileField()),
 });
 
-const basicSubmit = basicDraft.extend({
+const basicFull = basicDraft.extend({
   pocName: personName("Contact name"),
   pocDesignation: designation(),
   pocEmail: emailField(),
@@ -40,16 +41,42 @@ const basicSubmit = basicDraft.extend({
 });
 
 const FILE_FIELDS: [string, DocumentKind][] = [["profileFile", "PROFILE"], ["credentialsFile", "CREDENTIALS"]];
+const BASIC_KEYS = ["name", "country", "pocName", "pocDesignation", "pocEmail", "pocMobile"] as const;
+const LOCKED = "Your application is with FIEO for verification. You can make changes once FIEO has verified it.";
+
+/** Store uploaded files as the buyer's documents (`pending` = part of a change waiting for FIEO). */
+async function storeDocs(buyerId: string, files: { kind: DocumentKind; file: File }[], pending: boolean) {
+  for (const { kind, file } of files) {
+    const storedName = await storeUpload(file, buyerId, kind.toLowerCase());
+    const where = { buyerId_kind_pending: { buyerId, kind, pending } };
+    const prev = await prisma.document.findUnique({ where });
+    const doc = { originalName: file.name.slice(0, 200), storedName, mimeType: file.type, size: file.size, uploadedAt: new Date() };
+    await prisma.document.upsert({ where, create: { buyerId, kind, pending, ...doc }, update: doc });
+    if (prev) await deleteUpload(prev.storedName);
+  }
+}
+
+/** Save a requested change; clears it when nothing differs from the verified details any more. */
+async function saveChange(buyerId: string, userId: string, change: BuyerChange, what: string) {
+  const pendingDocs = await prisma.document.count({ where: { buyerId, pending: true } });
+  const any = change.basic || change.profile || pendingDocs > 0;
+  delete change.comment; // a fresh request replaces FIEO's earlier return comment
+  await prisma.$transaction([
+    prisma.buyer.update({ where: { id: buyerId }, data: any
+      ? { pendingChange: JSON.stringify(change), changeState: "SUBMITTED", changeAt: new Date() }
+      : { pendingChange: null, changeState: null, changeAt: null } }),
+    ...(any ? [prisma.reviewLog.create({ data: { buyerId, actorId: userId, actorRole: "BUYER", action: "CHANGE_SUBMITTED", comment: what } })] : []),
+  ]);
+  return any;
+}
 
 export async function saveBasicAction(_: FormState, form: FormData): Promise<FormState> {
   const { user, buyer } = await requireBuyer();
-  if (!canEditBasic(buyer.status)) return { error: "Your basic details are locked while under review or after approval." };
+  const mode = canEditApplication(buyer.status) ? "draft" : canRequestChange(buyer.status) ? "change" : null;
+  if (!mode) return { error: LOCKED };
 
-  const intent = form.get("intent") === "submit" ? "submit" : "save";
-  const raw = Object.fromEntries(
-    ["name", "country", "pocName", "pocDesignation", "pocEmail", "pocMobile"].map((k) => [k, String(form.get(k) ?? "")]),
-  );
-  const parsed = (intent === "submit" ? basicSubmit : basicDraft).safeParse(raw);
+  const raw = Object.fromEntries(BASIC_KEYS.map((k) => [k, String(form.get(k) ?? "")]));
+  const parsed = (mode === "change" ? basicFull : basicDraft).safeParse(raw);
   const errors: Record<string, string> = parsed.success ? {} : fieldErrors(parsed.error);
 
   // Validate files first, store only when the whole form is valid.
@@ -62,57 +89,50 @@ export async function saveBasicAction(_: FormState, form: FormData): Promise<For
       else files.push({ kind, file: f });
     }
   }
-  if (intent === "submit") {
-    const existing = await prisma.document.findMany({ where: { buyerId: buyer.id }, select: { kind: true } });
-    for (const [field, kind] of FILE_FIELDS) {
-      if (!existing.some((d) => d.kind === kind) && !files.some((f) => f.kind === kind)) {
-        errors[field] = kind === "PROFILE" ? "Upload your company profile." : "Upload your organisation credentials.";
-      }
-    }
-  }
   if (!parsed.success || Object.keys(errors).length) {
     return { fieldErrors: errors, error: "Please correct the highlighted fields.", data: raw };
   }
+  try {
+    await storeDocs(buyer.id, files, mode === "change");
+  } catch (e) {
+    return { error: (e as Error).message, data: raw };
+  }
+  const d = parsed.data;
 
-  for (const { kind, file } of files) {
-    let storedName: string;
-    try {
-      storedName = await storeUpload(file, buyer.id, kind.toLowerCase());
-    } catch (e) {
-      return { fieldErrors: { [kind === "PROFILE" ? "profileFile" : "credentialsFile"]: (e as Error).message }, data: raw };
-    }
-    const prev = await prisma.document.findUnique({ where: { buyerId_kind: { buyerId: buyer.id, kind } } });
-    const doc = { originalName: file.name.slice(0, 200), storedName, mimeType: file.type, size: file.size, uploadedAt: new Date() };
-    await prisma.document.upsert({
-      where: { buyerId_kind: { buyerId: buyer.id, kind } },
-      create: { buyerId: buyer.id, kind, ...doc },
-      update: doc,
-    });
-    if (prev) await deleteUpload(prev.storedName);
+  if (mode === "draft") {
+    await prisma.$transaction([
+      prisma.buyer.update({ where: { id: buyer.id }, data: d }),
+      prisma.user.update({ where: { id: user.id }, data: { displayName: d.name } }),
+    ]);
+    revalidatePath("/buyer", "layout");
+    return { ok: true, message: "Basic details saved. Submit your application once every section is complete." };
   }
 
-  const d = parsed.data;
-  await prisma.$transaction(async (tx) => {
-    await tx.buyer.update({
-      where: { id: buyer.id },
-      data: {
-        ...d,
-        ...(intent === "submit" ? { status: "BASIC_SUBMITTED", basicSubmittedAt: new Date() } : {}),
-      },
-    });
-    await tx.user.update({ where: { id: user.id }, data: { displayName: d.name } });
-    if (intent === "submit") {
-      await tx.reviewLog.create({ data: { buyerId: buyer.id, actorId: user.id, actorRole: "BUYER", action: "BASIC_SUBMITTED" } });
-    }
-  });
-
+  // Verified buyer: hold the change for FIEO; the verified details stay in use meanwhile.
+  const change = parseChange(buyer.pendingChange);
+  const next = { name: d.name, country: d.country, pocName: d.pocName!, pocDesignation: d.pocDesignation!, pocEmail: d.pocEmail!, pocMobile: d.pocMobile! };
+  const current = Object.fromEntries(BASIC_KEYS.map((k) => [k, buyer[k] ?? ""])) as BasicFields;
+  change.basic = BASIC_KEYS.some((k) => (current[k] ?? "") !== next[k]) ? next : undefined;
+  const sent = await saveChange(buyer.id, user.id, change, files.length ? "Basic details and documents" : "Basic details");
   revalidatePath("/buyer", "layout");
-  return {
-    ok: true,
-    message: intent === "submit"
-      ? "Basic details submitted to FIEO for approval. You will be notified by e-mail."
-      : "Draft saved.",
-  };
+  revalidatePath("/fieo", "layout");
+  if (!sent) return { error: "Nothing has changed — the details are the same as the verified ones." };
+  return { ok: true, message: "Change sent to FIEO for verification. Your verified details stay in use until FIEO verifies the change." };
+}
+
+/** Buyer withdraws a change that FIEO has not verified yet. */
+export async function withdrawChangeAction(): Promise<FormState> {
+  const { buyer } = await requireBuyer();
+  if (!buyer.changeState) return { error: "There is no change to withdraw." };
+  const docs = await prisma.document.findMany({ where: { buyerId: buyer.id, pending: true } });
+  await prisma.$transaction([
+    prisma.document.deleteMany({ where: { buyerId: buyer.id, pending: true } }),
+    prisma.buyer.update({ where: { id: buyer.id }, data: { pendingChange: null, changeState: null, changeAt: null } }),
+  ]);
+  for (const d of docs) await deleteUpload(d.storedName);
+  revalidatePath("/buyer", "layout");
+  revalidatePath("/fieo", "layout");
+  return { ok: true, message: "Change withdrawn. Your verified details are unchanged." };
 }
 
 // ---------------------------------------------------------------- sourcing profile
@@ -123,6 +143,7 @@ const profileSchema = z.object({
   sourcingTimeline: opt(80, "Sourcing timeline"),
   preferredEngagement: opt(120, "Preferred engagement"),
 });
+const PROFILE_KEYS = ["organisationType", "annualSourcingValue", "sourcingTimeline", "preferredEngagement"] as const;
 
 /** What is still missing from the sourcing profile before a sector can be submitted. */
 function profileGaps(req: { organisationType: string | null; annualSourcingValue: string | null; sourcingTimeline: string | null } | null) {
@@ -133,27 +154,67 @@ function profileGaps(req: { organisationType: string | null; annualSourcingValue
   return gaps;
 }
 
-async function requireRequirementBuyer() {
-  const ctx = await requireBuyer();
-  if (!canWorkOnRequirements(ctx.buyer.status)) return null;
-  return ctx;
+export async function saveProfileAction(_: FormState, form: FormData): Promise<FormState> {
+  const { user, buyer } = await requireBuyer();
+  const parsed = profileSchema.safeParse(Object.fromEntries(PROFILE_KEYS.map((k) => [k, String(form.get(k) ?? "")])));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error), error: "Please correct the highlighted fields." };
+  const req = await prisma.requirement.findUnique({ where: { buyerId: buyer.id } });
+  // A verified buyer whose profile was never completed (earlier registrations) completes it directly.
+  const direct = canEditApplication(buyer.status) || (canRequestChange(buyer.status) && profileGaps(req).length > 0);
+  if (!direct && !canRequestChange(buyer.status)) return { error: LOCKED };
+
+  if (direct) {
+    await prisma.requirement.upsert({ where: { buyerId: buyer.id }, create: { buyerId: buyer.id, ...parsed.data }, update: parsed.data });
+    revalidatePath("/buyer", "layout");
+    const gaps = profileGaps(parsed.data);
+    return { ok: true, message: gaps.length ? `Saved. Still needed: ${gaps.join(", ")}.` : "Sourcing profile saved." };
+  }
+
+  const gaps = profileGaps(parsed.data);
+  if (gaps.length) return { error: `Please complete the sourcing profile (missing: ${gaps.join(", ")}).` };
+  const change = parseChange(buyer.pendingChange);
+  const current = Object.fromEntries(PROFILE_KEYS.map((k) => [k, req?.[k] ?? null])) as ProfileFields;
+  change.profile = PROFILE_KEYS.some((k) => (current[k] ?? "") !== (parsed.data[k] ?? "")) ? parsed.data : undefined;
+  const sent = await saveChange(buyer.id, user.id, change, "Sourcing profile");
+  revalidatePath("/buyer", "layout");
+  revalidatePath("/fieo", "layout");
+  if (!sent) return { error: "Nothing has changed — the sourcing profile is the same as the verified one." };
+  return { ok: true, message: "Change sent to FIEO for verification. Your verified sourcing profile stays in use until FIEO verifies the change." };
 }
 
-export async function saveProfileAction(_: FormState, form: FormData): Promise<FormState> {
-  const ctx = await requireRequirementBuyer();
-  if (!ctx) return { error: "Sector requirements open after FIEO approves your basic details." };
-  const parsed = profileSchema.safeParse(Object.fromEntries(
-    ["organisationType", "annualSourcingValue", "sourcingTimeline", "preferredEngagement"].map((k) => [k, String(form.get(k) ?? "")]),
-  ));
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error), error: "Please correct the highlighted fields." };
-  await prisma.requirement.upsert({
-    where: { buyerId: ctx.buyer.id },
-    create: { buyerId: ctx.buyer.id, ...parsed.data },
-    update: parsed.data,
+// ---------------------------------------------------------------- submit the application
+
+/** Submits the whole application — basic details, documents, sourcing profile and every sector — to FIEO in one step. */
+export async function submitApplicationAction(): Promise<FormState> {
+  const { user, buyer } = await requireBuyer();
+  if (!canEditApplication(buyer.status)) return { error: "Your application has already been submitted." };
+  const [docs, req] = await Promise.all([
+    prisma.document.findMany({ where: { buyerId: buyer.id, pending: false }, select: { kind: true } }),
+    prisma.requirement.findUnique({ where: { buyerId: buyer.id }, include: { items: { include: { sector: true } } } }),
+  ]);
+  const missing: string[] = [];
+  if (!basicFull.safeParse(Object.fromEntries(BASIC_KEYS.map((k) => [k, buyer[k] ?? ""]))).success) missing.push("basic details (point of contact)");
+  if (!docs.some((d) => d.kind === "PROFILE")) missing.push("company profile document");
+  if (!docs.some((d) => d.kind === "CREDENTIALS")) missing.push("organisation credentials document");
+  const gaps = profileGaps(req);
+  if (gaps.length) missing.push(`sourcing profile (${gaps.join(", ")})`);
+  if (!req?.items.length) missing.push("at least one sector requirement");
+  if (missing.length) return { error: `Please complete before submitting: ${missing.join("; ")}.` };
+
+  const now = new Date();
+  const toSubmit = req!.items.filter((i) => ITEM_TO_SUBMIT.includes(i.status));
+  await prisma.$transaction(async (tx) => {
+    const moved = await tx.buyer.updateMany({ where: { id: buyer.id, status: buyer.status }, data: { status: "BASIC_SUBMITTED", basicSubmittedAt: now } });
+    if (moved.count !== 1) return;
+    await tx.reviewLog.create({ data: { buyerId: buyer.id, actorId: user.id, actorRole: "BUYER", action: "BASIC_SUBMITTED" } });
+    for (const it of toSubmit) {
+      await tx.requirementItem.update({ where: { id: it.id }, data: { status: "SUBMITTED", submittedAt: now } });
+      await tx.reviewLog.create({ data: { buyerId: buyer.id, actorId: user.id, actorRole: "BUYER", action: "REQ_SUBMITTED", itemId: it.id, sectorName: it.sector.name } });
+    }
   });
   revalidatePath("/buyer", "layout");
-  const gaps = profileGaps(parsed.data);
-  return { ok: true, message: gaps.length ? `Saved. Still needed before submitting sectors: ${gaps.join(", ")}.` : "Sourcing profile saved." };
+  revalidatePath("/fieo", "layout");
+  return { ok: true, message: `Application submitted to FIEO with ${req!.items.length} sector${req!.items.length > 1 ? "s" : ""}. You will be notified by e-mail.` };
 }
 
 // ---------------------------------------------------------------- sector requirements
@@ -174,10 +235,10 @@ const sameContent = (
   (a.quantity ?? "") === b.quantity && JSON.stringify([...parseCerts(a.certifications)].sort()) === JSON.stringify([...new Set(b.certifications)].sort());
 
 export async function saveItemAction(_: FormState, form: FormData): Promise<FormState> {
-  const ctx = await requireRequirementBuyer();
-  if (!ctx) return { error: "Sector requirements open after FIEO approves your basic details." };
-  const { user, buyer } = ctx;
-  const intent = form.get("intent") === "submit" ? "submit" : "save";
+  const { user, buyer } = await requireBuyer();
+  if (buyer.status === "BASIC_SUBMITTED") return { error: LOCKED };
+  // Before the application is submitted, sectors are saved with it and submitted together.
+  const intent = form.get("intent") === "submit" && canSubmitItems(buyer.status) ? "submit" : "save";
   const itemId = String(form.get("itemId") ?? "") || null;
 
   let certifications: unknown = [];
@@ -223,7 +284,7 @@ export async function saveItemAction(_: FormState, form: FormData): Promise<Form
 
   await prisma.$transaction(async (tx) => {
     const reopened = existing?.status === "APPROVED";
-    const status = submit ? "SUBMITTED" : existing?.status === "FIEO_RETURNED" ? "FIEO_RETURNED" : "DRAFT";
+    const status = submit ? "SUBMITTED" : existing?.status === "FIEO_RETURNED" || existing?.status === "FIEO_REJECTED" ? existing.status : "DRAFT";
     const item = existing
       ? await tx.requirementItem.update({
           where: { id: existing.id },
@@ -242,23 +303,22 @@ export async function saveItemAction(_: FormState, form: FormData): Promise<Form
   return {
     ok: true,
     message: submit
-      ? `${sector.name}: submitted to FIEO for recommendation.`
+      ? `${sector.name}: submitted to FIEO for verification.`
       : existing?.status === "APPROVED"
         ? `${sector.name}: changes saved as a draft. Submit it to send the changes for approval.`
-        : `${sector.name}: draft saved.`,
+        : canSubmitItems(buyer.status) ? `${sector.name}: draft saved.` : `${sector.name}: saved. It will go to FIEO with your application.`,
   };
 }
 
-/** Submits every draft / returned sector in one go. */
+/** Submits every draft / returned / rejected sector in one go (after the application has been submitted). */
 export async function submitAllAction(): Promise<FormState> {
-  const ctx = await requireRequirementBuyer();
-  if (!ctx) return { error: "Sector requirements open after FIEO approves your basic details." };
-  const { user, buyer } = ctx;
+  const { user, buyer } = await requireBuyer();
+  if (!canSubmitItems(buyer.status)) return { error: "Submit your application first — the sectors go with it." };
   const req = await prisma.requirement.findUnique({
     where: { buyerId: buyer.id },
-    include: { items: { where: { status: { in: ["DRAFT", "FIEO_RETURNED"] } }, include: { sector: true } } },
+    include: { items: { where: { status: { in: ITEM_TO_SUBMIT } }, include: { sector: true } } },
   });
-  if (!req?.items.length) return { error: "There are no draft or returned sectors to submit." };
+  if (!req?.items.length) return { error: "There are no draft, returned or rejected sectors to submit." };
   const gaps = profileGaps(req);
   if (gaps.length) return { error: `Complete your sourcing profile first (missing: ${gaps.join(", ")}).` };
   const now = new Date();
@@ -273,9 +333,8 @@ export async function submitAllAction(): Promise<FormState> {
 }
 
 export async function removeItemAction(_: FormState, form: FormData): Promise<FormState> {
-  const ctx = await requireRequirementBuyer();
-  if (!ctx) return { error: "Not allowed." };
-  const { user, buyer } = ctx;
+  const { user, buyer } = await requireBuyer();
+  if (buyer.status === "BASIC_SUBMITTED") return { error: LOCKED };
   const item = await prisma.requirementItem.findFirst({
     where: { id: String(form.get("itemId") ?? ""), requirement: { buyerId: buyer.id } },
     include: { sector: true },

@@ -35,7 +35,8 @@ enum ItemStatus {
   DRAFT // being prepared (new, or an approved sector being modified)
   SUBMITTED // waiting for FIEO recommendation
   FIEO_RETURNED // FIEO returned it to the buyer with a comment
-  FIEO_RECOMMENDED // waiting for Directorate (DIC) approval
+  FIEO_REJECTED // FIEO rejected it; the buyer may edit and submit it again
+  FIEO_RECOMMENDED // approved by FIEO, waiting for Directorate (DIC) approval
   DIC_RETURNED // DIC returned it to FIEO with a comment for re-verification
   APPROVED // approved by DIC
 }
@@ -52,6 +53,10 @@ enum ReviewAction {
   DIC_APPROVED
   REQ_WITHDRAWN // buyer removed a sector
   REQ_MODIFIED // buyer reopened an approved sector for changes
+  REQ_REJECTED // FIEO rejected a sector
+  CHANGE_SUBMITTED // buyer asked to change verified basic details / sourcing profile
+  CHANGE_APPROVED // FIEO verified the change
+  CHANGE_RETURNED // FIEO returned the change with a comment
 }
 
 enum DocumentKind {
@@ -157,6 +162,12 @@ model Buyer {
   approvedSeq Int?    @unique
   approvedNo  String? @unique // RBSM-Buyer-2026001
 
+  // A change to verified basic details / documents / sourcing profile, held until FIEO verifies it
+  // (the verified details stay in use meanwhile). JSON { basic?: {...}, profile?: {...} }.
+  pendingChange   String?
+  changeState     String? // "SUBMITTED" (with FIEO) | "RETURNED" (back with the buyer)
+  changeAt        DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -190,8 +201,9 @@ model Document {
   mimeType     String
   size         Int
   uploadedAt   DateTime     @default(now())
+  pending      Boolean      @default(false) // part of a change waiting for FIEO verification
 
-  @@unique([buyerId, kind])
+  @@unique([buyerId, kind, pending])
 }
 
 model Sector {

@@ -4,7 +4,8 @@ import { fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 const DOT: Partial<Record<ReviewAction, string>> = {
-  BASIC_RETURNED: "bg-tx-red", REQ_RETURNED: "bg-tx-red", DIC_RETURNED: "bg-tx-red",
+  BASIC_RETURNED: "bg-tx-red", REQ_RETURNED: "bg-tx-red", DIC_RETURNED: "bg-tx-red", REQ_REJECTED: "bg-rose-700", CHANGE_RETURNED: "bg-tx-red",
+  CHANGE_SUBMITTED: "bg-tx-blue", CHANGE_APPROVED: "bg-tx-green",
   BASIC_APPROVED: "bg-tx-green", FIEO_RECOMMENDED: "bg-violet-500", DIC_APPROVED: "bg-tx-green",
   REQ_WITHDRAWN: "bg-slate-400", REQ_MODIFIED: "bg-tx-yellow",
   BASIC_SUBMITTED: "bg-tx-blue", REQ_SUBMITTED: "bg-tx-blue",

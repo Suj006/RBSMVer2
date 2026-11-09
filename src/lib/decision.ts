@@ -35,8 +35,8 @@ export async function buildDecisionView(ins: Insights, root: string) {
   // Funnels
   const buyerFunnel: FunnelStep[] = [
     { label: "Signed up", value: buyers.length, href: `${root}/buyers` },
-    { label: "Basic details submitted", value: buyers.filter((b) => b.basicSubmittedAt || b.status !== "SIGNED_UP").length },
-    { label: "Basic details approved by FIEO", value: buyers.filter((b) => b.status === "BASIC_APPROVED" || b.status === "APPROVED").length, href: `${root}/buyers?status=basic_approved` },
+    { label: "Application submitted", value: buyers.filter((b) => b.basicSubmittedAt || b.status !== "SIGNED_UP").length },
+    { label: "Verified by FIEO", value: buyers.filter((b) => b.status === "BASIC_APPROVED" || b.status === "APPROVED").length, href: `${root}/buyers?status=basic_approved` },
     { label: "Sector requirement submitted", value: buyers.filter((b) => b.requirement?.items.some((i) => i.status !== "DRAFT")).length },
     { label: "Approved buyer", value: buyers.filter((b) => b.status === "APPROVED").length, href: `${root}/buyers?status=APPROVED` },
   ];

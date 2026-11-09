@@ -181,8 +181,8 @@ async function buyerRegister(user: User, f: BuyerFilters): Promise<Report> {
   const kpis: Kpi[] = [
     { label: "Buyers", value: buyers.length, tone: "blue" },
     { label: "Approved buyers", value: n(["APPROVED"]), tone: "green" },
-    { label: "Requirement stage", value: n(["BASIC_APPROVED"]), tone: "violet" },
-    { label: "Basic details pending / under review", value: n(["SIGNED_UP", "BASIC_SUBMITTED", "BASIC_RETURNED"]), tone: "yellow" },
+    { label: "Verified by FIEO, sectors in approval", value: n(["BASIC_APPROVED"]), tone: "violet" },
+    { label: "Application not submitted / with FIEO", value: n(["SIGNED_UP", "BASIC_SUBMITTED", "BASIC_RETURNED"]), tone: "yellow" },
   ];
   return {
     ...base("buyer-register", user, await describeFilters(f)),
@@ -683,7 +683,7 @@ export async function buildDossier(user: User, buyerId: string): Promise<Report 
     { key: "label", header: "Particulars", width: 28 },
     { key: "value", header: "Details", width: 62 },
   ];
-  const doc = (k: "PROFILE" | "CREDENTIALS") => b.documents.find((d) => d.kind === k)?.originalName ?? "Not uploaded";
+  const doc = (k: "PROFILE" | "CREDENTIALS") => b.documents.find((d) => d.kind === k && !d.pending)?.originalName ?? "Not uploaded";
   const generatedAt = new Date();
   return {
     id: "buyer-profile",
@@ -707,7 +707,7 @@ export async function buildDossier(user: User, buyerId: string): Promise<Report 
           ["Name of the buyer", b.name], ["Country", b.country], ["Sign-up e-mail", b.signupEmail],
           ["Contact person", b.pocName], ["Designation", b.pocDesignation], ["Contact e-mail", b.pocEmail], ["Mobile number", b.pocMobile],
           ["Company profile", doc("PROFILE")], ["Organisation credentials", doc("CREDENTIALS")],
-          ["Registered on", b.createdAt], ["Basic details approved on", b.basicApprovedAt], ["Approved as RBSM buyer on", b.approvedAt],
+          ["Registered on", b.createdAt], ["Verified by FIEO on", b.basicApprovedAt], ["Approved as RBSM buyer on", b.approvedAt],
         ]),
       },
       {

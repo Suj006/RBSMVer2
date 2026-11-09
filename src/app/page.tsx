@@ -27,9 +27,9 @@ const ACCENTS = ["text-tx-green bg-tx-green/10", "text-tx-blue bg-tx-blue/10", "
 
 const BUYER_STEPS = [
   { icon: UserPlus, title: "Sign up in a minute", body: "Country, organisation name and e-mail. Your login is e-mailed to you straight away." },
-  { icon: Building2, title: "Share your basic details", body: "Point of contact, company profile and organisation credentials." },
-  { icon: ShieldCheck, title: "Verified by FIEO", body: "FIEO verifies your organisation and opens the sourcing requirement." },
-  { icon: ClipboardCheck, title: "Tell us what you source", body: "Sector by sector: products, specifications, certifications and volumes." },
+  { icon: Building2, title: "Complete one application", body: "Point of contact, company documents and sourcing profile." },
+  { icon: ClipboardCheck, title: "Tell us what you source", body: "Sector by sector: products, specifications, certifications and volumes — submitted with your application." },
+  { icon: ShieldCheck, title: "Verified by FIEO", body: "FIEO verifies your organisation and each sector in one review." },
   { icon: BadgeCheck, title: "Approved by the Directorate", body: "You receive your RBSM buyer number and are matched with suppliers." },
 ];
 const SELLER_STEPS = [

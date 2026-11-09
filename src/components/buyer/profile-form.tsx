@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Save } from "lucide-react";
+import { Save, Send } from "lucide-react";
 import { saveProfileAction } from "@/app/actions/buyer";
 import { Alert, Button, Card, CardHeader, Field, Select } from "@/components/ui";
 import { ENGAGEMENT_TYPES, ORGANISATION_TYPES, SOURCING_TIMELINES, SOURCING_VALUES } from "@/lib/config";
@@ -9,7 +9,8 @@ import { useKeepForm } from "@/lib/use-keep-form";
 
 export type Profile = { organisationType: string; procurementInterests: string; annualSourcingValue: string; sourcingTimeline: string; preferredEngagement: string };
 
-export function ProfileForm({ profile, complete }: { profile: Profile; complete: boolean }) {
+/** "draft": saved directly (before the application is submitted). "change": sent to FIEO for verification. */
+export function ProfileForm({ profile, complete, mode = "draft", onCancel }: { profile: Profile; complete: boolean; mode?: "draft" | "change"; onCancel?: () => void }) {
   const [state, action, pending] = useActionState(saveProfileAction, undefined);
   const onSubmit = useKeepForm(action);
   const fe = state?.fieldErrors ?? {};
@@ -17,7 +18,7 @@ export function ProfileForm({ profile, complete }: { profile: Profile; complete:
     <Card>
       <CardHeader title="Sourcing profile" subtitle={complete
         ? "Applies to all your sectors. Please write all details in English."
-        : "Complete this once before submitting sectors. Please write all details in English."} />
+        : "Required before you submit your application. Please write all details in English."} />
       <form onSubmit={onSubmit} className="space-y-5 p-6">
         {state?.error && <Alert tone="red">{state.error}</Alert>}
         {state?.ok && <Alert tone="green">{state.message}</Alert>}
@@ -47,8 +48,11 @@ export function ProfileForm({ profile, complete }: { profile: Profile; complete:
             </Select>
           </Field>
         </div>
-        <div className="flex justify-end">
-          <Button type="submit" variant="secondary" disabled={pending}><Save className="size-4" /> {pending ? "Saving…" : "Save profile"}</Button>
+        <div className="flex justify-end gap-3">
+          {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
+          {mode === "draft"
+            ? <Button type="submit" variant="secondary" disabled={pending}><Save className="size-4" /> {pending ? "Saving…" : "Save profile"}</Button>
+            : <Button type="submit" disabled={pending}><Send className="size-4" /> {pending ? "Sending…" : "Send change to FIEO"}</Button>}
         </div>
       </form>
     </Card>

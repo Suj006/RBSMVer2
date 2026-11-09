@@ -9,12 +9,17 @@ profiling, verification, matchmaking, meeting scheduling, communication, monitor
 
 ```
 Buyer sign-up ─► e-mail with login (Tradex2027-NNN / pass@123) ─► forced password change
-   ─► Basic details + documents ─► FIEO approves (or returns with comment)
-   ─► Sourcing profile + one requirement per sector
-        each sector separately:  submitted ─► FIEO recommends / returns to buyer
-                                           ─► DIC approves / returns to FIEO
+   ─► My application (one step): basic details + documents + sourcing profile + one or more sectors
+   ─► Submit application to FIEO (at least one sector; sourcing profile required)
+   ─► FIEO reviews it in one go: basic details verified (optional comment for the buyer, which does not hold up
+      the sectors) and, for each sector, Approve (→ Directorate) / Return for correction / Reject
+        returned or rejected sectors: the buyer edits them and submits them again
+   ─► Directorate, each FIEO-approved sector: Approve / Return to FIEO
    ─► first approved sector makes the buyer an approved RBSM buyer (RBSM-Buyer-2026NNN)
-   ─► approved buyers can add sectors or modify approved ones — same approval flow
+   ─► afterwards: new or modified sectors go through FIEO and the Directorate again;
+      changes to basic details, documents or the sourcing profile are verified by FIEO only —
+      the verified details stay in use until FIEO verifies the change (FIEO can return it with a comment;
+      the buyer can correct or withdraw it)
 ```
 
 **Buyers added by FIEO.** (Buyers who sign up themselves follow the workflow above, unchanged.) FIEO can also register buyers itself — **Add buyer** (one at a time, with optional company

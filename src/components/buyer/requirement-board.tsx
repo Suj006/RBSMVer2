@@ -5,7 +5,7 @@ import { Pencil, Plus, Save, Send, Trash2, X, History } from "lucide-react";
 import type { ItemStatus } from "@/generated/prisma/enums";
 import { removeItemAction, saveItemAction, submitAllAction } from "@/app/actions/buyer";
 import { Alert, Badge, Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
-import { ITEM_EDITABLE, ITEM_META } from "@/lib/status";
+import { ITEM_EDITABLE, ITEM_META, ITEM_TO_SUBMIT } from "@/lib/status";
 import { useKeepForm } from "@/lib/use-keep-form";
 import { cn } from "@/lib/cn";
 
@@ -17,13 +17,14 @@ export type BoardItem = {
 
 type Draft = Omit<BoardItem, "id" | "status" | "everApproved" | "lastComment" | "sectorName"> & { id: string | null };
 
-export function RequirementBoard({ items, sectors, certifications, profileComplete }: {
-  items: BoardItem[]; sectors: { id: string; name: string }[]; certifications: string[]; profileComplete: boolean;
+/** `canSubmit` is false while the application is a draft: sectors are then saved and go to FIEO with the application. */
+export function RequirementBoard({ items, sectors, certifications, profileComplete, canSubmit = true, locked = false }: {
+  items: BoardItem[]; sectors: { id: string; name: string }[]; certifications: string[]; profileComplete: boolean; canSubmit?: boolean; locked?: boolean;
 }) {
   const [editing, setEditing] = useState<string | "new" | null>(items.length ? null : "new");
   const [flash, setFlash] = useState<string | null>(null);
   const [submitState, submitAll, submitting] = useActionState(submitAllAction, undefined);
-  const pendingDrafts = items.filter((i) => i.status === "DRAFT" || i.status === "FIEO_RETURNED");
+  const pendingDrafts = items.filter((i) => ITEM_TO_SUBMIT.includes(i.status));
   const used = new Set(items.map((i) => i.sectorId));
   const done = useCallback((msg: string) => { setEditing(null); setFlash(msg); }, []);
 
@@ -31,30 +32,32 @@ export function RequirementBoard({ items, sectors, certifications, profileComple
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-ink">Sector requirements</h2>
-          <p className="text-sm text-slate-500">Each sector is reviewed and approved separately by FIEO and the Directorate.</p>
+          <p className="text-sm text-slate-500">{canSubmit
+            ? "Each sector is verified by FIEO and then approved by the Directorate, separately."
+            : "Add one or more sectors. They are sent to FIEO together with your application."}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {pendingDrafts.length > 0 && (
+          {canSubmit && !locked && pendingDrafts.length > 0 && (
             <form action={submitAll} onSubmit={() => setFlash(null)}>
               <Button type="submit" disabled={submitting || !profileComplete} title={profileComplete ? undefined : "Complete the sourcing profile first"}>
                 <Send className="size-4" /> Submit {pendingDrafts.length} pending to FIEO
               </Button>
             </form>
           )}
-          <Button type="button" variant="secondary" onClick={() => { setEditing("new"); setFlash(null); }} disabled={editing === "new" || used.size >= sectors.length}>
+          <Button type="button" variant="secondary" onClick={() => { setEditing("new"); setFlash(null); }} disabled={locked || editing === "new" || used.size >= sectors.length}>
             <Plus className="size-4" /> Add sector
           </Button>
         </div>
       </div>
 
-      {!profileComplete && <Alert tone="amber">Complete and save the sourcing profile above before submitting sectors. You can save sector drafts meanwhile.</Alert>}
+      {canSubmit && !profileComplete && <Alert tone="amber">Complete and save the sourcing profile above before submitting sectors. You can save sector drafts meanwhile.</Alert>}
       {flash && <Alert tone="green">{flash}</Alert>}
       {submitState?.ok && !flash && <Alert tone="green">{submitState.message}</Alert>}
       {submitState?.error && <Alert tone="red">{submitState.error}</Alert>}
 
-      {editing === "new" && (
+      {editing === "new" && !locked && (
         <ItemEditor
+          canSubmit={canSubmit}
           draft={{ id: null, sectorId: "", products: "", specifications: "", certifications: [], quantity: "" }}
           sectors={sectors.filter((s) => !used.has(s.id))}
           certifications={certifications}
@@ -68,6 +71,7 @@ export function RequirementBoard({ items, sectors, certifications, profileComple
         editing === it.id ? (
           <ItemEditor
             key={it.id}
+            canSubmit={canSubmit}
             draft={it}
             status={it.status}
             sectors={sectors.filter((s) => s.id === it.sectorId || !used.has(s.id))}
@@ -77,23 +81,23 @@ export function RequirementBoard({ items, sectors, certifications, profileComple
             onDone={done}
           />
         ) : (
-          <ItemCard key={it.id} item={it} onEdit={() => { setEditing(it.id); setFlash(null); }} onRemoved={setFlash} />
+          <ItemCard key={it.id} item={it} locked={locked} onEdit={() => { setEditing(it.id); setFlash(null); }} onRemoved={setFlash} />
         ),
       )}
 
-      {!items.length && editing !== "new" && (
+      {!items.length && (editing !== "new" || locked) && (
         <Card className="p-8 text-center text-sm text-slate-500">No sectors yet — click “Add sector”.</Card>
       )}
     </div>
   );
 }
 
-function ItemCard({ item, onEdit, onRemoved }: { item: BoardItem; onEdit: () => void; onRemoved: (msg: string) => void }) {
+function ItemCard({ item, locked, onEdit, onRemoved }: { item: BoardItem; locked: boolean; onEdit: () => void; onRemoved: (msg: string) => void }) {
   const [state, remove, removing] = useActionState(removeItemAction, undefined);
   useEffect(() => { if (state?.ok) onRemoved(state.message!); }, [state, onRemoved]);
   const meta = ITEM_META[item.status];
-  const editable = ITEM_EDITABLE.includes(item.status);
-  const returned = item.status === "FIEO_RETURNED";
+  const editable = !locked && ITEM_EDITABLE.includes(item.status);
+  const returned = item.status === "FIEO_RETURNED" || item.status === "FIEO_REJECTED";
   return (
     <Card id={`item-${item.id}`} className={cn("scroll-mt-24 overflow-hidden", returned && "ring-2 ring-red-200")}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-6 py-4">
@@ -123,21 +127,21 @@ function ItemCard({ item, onEdit, onRemoved }: { item: BoardItem; onEdit: () => 
       </div>
       <div className="space-y-3 px-6 py-4 text-sm">
         {state?.error && <Alert tone="red">{state.error}</Alert>}
-        {returned && item.lastComment && <Alert tone="red" title={`Returned by ${item.lastComment.by}`}>{item.lastComment.text}</Alert>}
+        {returned && item.lastComment && <Alert tone="red" title={`${item.status === "FIEO_REJECTED" ? "Rejected" : "Returned"} by ${item.lastComment.by}`}>{item.lastComment.text}{item.status === "FIEO_REJECTED" && " — you can edit this sector and submit it again."}</Alert>}
         <div><span className="font-semibold text-slate-600">Products: </span>{item.products}</div>
         {item.specifications && <div className="whitespace-pre-line"><span className="font-semibold text-slate-600">Specifications: </span>{item.specifications}</div>}
         {item.certifications.length > 0 && (
           <div className="flex flex-wrap gap-1.5">{item.certifications.map((c) => <Badge key={c} tone="green">{c}</Badge>)}</div>
         )}
-        {!editable && <p className="text-xs text-slate-500">With the reviewer — it can be changed again once a decision is made.</p>}
+        {!editable && !locked && <p className="text-xs text-slate-500">With the reviewer — it can be changed again once a decision is made.</p>}
       </div>
     </Card>
   );
 }
 
-function ItemEditor({ draft, status, sectors, certifications, profileComplete, onCancel, onDone }: {
+function ItemEditor({ draft, status, sectors, certifications, profileComplete, canSubmit, onCancel, onDone }: {
   draft: Draft; status?: ItemStatus; sectors: { id: string; name: string }[]; certifications: string[];
-  profileComplete: boolean; onCancel?: () => void; onDone: (msg: string) => void;
+  profileComplete: boolean; canSubmit: boolean; onCancel?: () => void; onDone: (msg: string) => void;
 }) {
   const [state, action, pending] = useActionState(saveItemAction, undefined);
   const onSubmit = useKeepForm(action);
@@ -218,11 +222,13 @@ function ItemEditor({ draft, status, sectors, certifications, profileComplete, o
         <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
           {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
           <Button type="submit" name="intent" value="save" variant="secondary" disabled={pending}>
-            <Save className="size-4" /> Save draft
+            <Save className="size-4" /> {canSubmit ? "Save draft" : pending ? "Saving…" : "Save sector"}
           </Button>
-          <Button type="submit" name="intent" value="submit" disabled={pending || !profileComplete} title={profileComplete ? undefined : "Complete the sourcing profile first"}>
-            <Send className="size-4" /> {pending ? "Saving…" : "Submit to FIEO"}
-          </Button>
+          {canSubmit && (
+            <Button type="submit" name="intent" value="submit" disabled={pending || !profileComplete} title={profileComplete ? undefined : "Complete the sourcing profile first"}>
+              <Send className="size-4" /> {pending ? "Saving…" : "Submit to FIEO"}
+            </Button>
+          )}
         </div>
       </form>
     </Card>

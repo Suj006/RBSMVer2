@@ -145,5 +145,5 @@ export async function changePasswordAction(_: FormState, form: FormData): Promis
     where: { id: user.id },
     data: { passwordHash: await hashPassword(parsed.data.next), mustChangePassword: false },
   });
-  redirect(user.role === "BUYER" ? "/buyer/profile?welcome=1" : ROLE_HOME[user.role]);
+  redirect(user.role === "BUYER" ? "/buyer/application?welcome=1" : ROLE_HOME[user.role]);
 }

@@ -16,6 +16,8 @@ import { ItemReview } from "./item-review";
 import { fmtDateTime, parseCerts } from "@/lib/format";
 import { parseSnapshot, type ItemSnapshot, type ProfileSnapshot } from "@/lib/item-snapshot";
 import { CountryTag, Flag } from "@/components/ids";
+import { ChangeView } from "@/components/change-view";
+import { parseChange } from "@/lib/buyer-change";
 
 /** Approved sectors being modified compare with the approved version; returned ones with what FIEO returned. */
 function baselineFor(i: { status: string; approvedSnapshot: string | null; returnedSnapshot: string | null }) {
@@ -23,7 +25,7 @@ function baselineFor(i: { status: string; approvedSnapshot: string | null; retur
   const approved = parseSnapshot<ItemSnapshot>(i.approvedSnapshot);
   if (approved) return { label: "approved version" as const, snap: approved };
   const returned = parseSnapshot<ItemSnapshot>(i.returnedSnapshot);
-  return returned ? { label: "version returned by FIEO" as const, snap: returned } : null;
+  return returned ? { label: "version FIEO returned or rejected" as const, snap: returned } : null;
 }
 
 export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; id: string; base: string; extra?: (buyerId: string) => React.ReactNode }) {
@@ -46,8 +48,12 @@ export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; i
     },
   });
   if (!b) notFound();
-  const doc = (k: "PROFILE" | "CREDENTIALS") => b.documents.find((d) => d.kind === k) ?? null;
+  const doc = (k: "PROFILE" | "CREDENTIALS") => b.documents.find((d) => d.kind === k && !d.pending) ?? null;
+  // FIEO verifies the basic details as part of its first review of the submitted application.
   const basicPending = role === "FIEO" && b.status === "BASIC_SUBMITTED";
+  const changePending = role === "FIEO" && b.changeState === "SUBMITTED";
+  const change = parseChange(b.pendingChange);
+  const req = b.requirement;
   const queue = role === "FIEO" ? FIEO_ITEM_QUEUE : role === "DIC" ? DIC_ITEM_QUEUE : [];
   const pendingItems = (b.requirement?.items ?? []).filter((i) => queue.includes(i.status)).length;
   const next = role === "FIEO" || role === "DIC"
@@ -66,11 +72,11 @@ export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; i
           · {b.source === "SELF" ? "Signed up on the portal" : `${b.source === "BULK" ? "Bulk upload" : "Added"} by FIEO${b.createdBy ? ` (${b.createdBy.displayName})` : ""}`}</span>}
         actions={<><StatusBadge status={b.status} /><DownloadButtons href={`/api/reports/buyer-profile?buyerId=${b.id}`} label="Buyer profile" compact /></>}
       />
-      {(basicPending || pendingItems > 0) && (
+      {(basicPending || changePending || pendingItems > 0) && (
         // On phones the decision panels sit below the long details; offer a shortcut.
-        <a href={basicPending ? "#decision" : "#sectors"}
+        <a href={changePending && !basicPending && !pendingItems ? "#change" : "#sectors"}
           className="no-print mb-4 flex items-center justify-between gap-3 rounded-xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-800 ring-1 ring-brand-200 lg:hidden">
-          {basicPending ? "Go to the basic details decision" : `Go to the ${pendingItems} sector${pendingItems > 1 ? "s" : ""} to decide`}
+          {changePending && !basicPending && !pendingItems ? "Go to the requested change" : basicPending ? "Go to the application review" : `Go to the ${pendingItems} sector${pendingItems > 1 ? "s" : ""} to decide`}
           <span aria-hidden>↓</span>
         </a>
       )}
@@ -79,7 +85,7 @@ export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; i
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-6">
           <Card>
-            <CardHeader title="Basic details" subtitle={b.basicSubmittedAt ? `Submitted ${fmtDateTime(b.basicSubmittedAt)}` : "Not yet submitted"} />
+            <CardHeader title="Basic details" subtitle={b.basicApprovedAt ? `Verified by FIEO ${fmtDateTime(b.basicApprovedAt)}` : b.basicSubmittedAt ? `Application submitted ${fmtDateTime(b.basicSubmittedAt)} — verified with FIEO's review below` : "Application not yet submitted"} />
             <div className="space-y-6 p-6">
               <DL cols={3} items={[
                 { label: "Name of the buyer", value: b.name },
@@ -102,23 +108,28 @@ export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; i
         </div>
 
         <div className="space-y-6">
-          {role === "FIEO" && b.status !== "APPROVED" && (
-            // Stays mounted so the confirmation remains visible after the status moves on.
-            <Card id="decision" className={basicPending ? "no-print scroll-mt-24 border-brand-200 p-5 ring-2 ring-brand-100" : "no-print scroll-mt-24 p-5"}>
-              <ReviewPanel
-                buyerId={b.id}
-                nav={nav}
-                heading={basicPending ? "Verify basic details" : "Basic details"}
-                note={basicPending
-                  ? "Check the buyer's identity, contact and documents. Approving lets the buyer add sector requirements."
-                  : b.status === "BASIC_APPROVED"
-                    ? "Approved. The buyer's sector requirements are reviewed below, one sector at a time."
-                    : "Waiting for the buyer to submit their basic details."}
-                actions={basicPending ? [
-                  { decision: "approve_basic", label: "Approve basic details", variant: "success", needsComment: false },
-                  { decision: "return_basic", label: "Return to buyer for correction", variant: "danger", needsComment: true },
-                ] : []}
-              />
+          {b.changeState && (
+            // A verified buyer's change to basic details / documents / sourcing profile: FIEO verifies it.
+            <Card id="change" className={changePending ? "no-print scroll-mt-24 border-amber-200 p-5 ring-2 ring-amber-100" : "no-print scroll-mt-24 p-5"}>
+              <div className="mb-4 space-y-3">
+                <div className="font-bold text-ink">{b.changeState === "SUBMITTED" ? "Change requested by the buyer" : "Change returned to the buyer"}</div>
+                <p className="text-sm text-slate-500">{b.changeState === "SUBMITTED"
+                  ? `Sent ${fmtDateTime(b.changeAt)}. The verified details stay in use until FIEO verifies the change.`
+                  : "Waiting for the buyer to correct and resend it."}</p>
+                {b.changeState === "RETURNED" && change.comment && <Alert tone="red" title="FIEO's comment">{change.comment}</Alert>}
+                <ChangeView change={change}
+                  basic={{ name: b.name, country: b.country, pocName: b.pocName ?? "", pocDesignation: b.pocDesignation ?? "", pocEmail: b.pocEmail ?? "", pocMobile: b.pocMobile ?? "" }}
+                  profile={{ organisationType: req?.organisationType ?? null, annualSourcingValue: req?.annualSourcingValue ?? null, sourcingTimeline: req?.sourcingTimeline ?? null, preferredEngagement: req?.preferredEngagement ?? null }}
+                  pendingDocs={b.documents.filter((d) => d.pending)} />
+              </div>
+              {changePending && (
+                <ReviewPanel buyerId={b.id} nav={nav} heading="Verify the change"
+                  note="Verifying puts the new details in use. Returning keeps the verified details and sends the change back to the buyer."
+                  actions={[
+                    { decision: "approve_change", label: "Verify change", variant: "success", needsComment: false },
+                    { decision: "return_change", label: "Return change to buyer", variant: "danger", needsComment: true },
+                  ]} />
+              )}
             </Card>
           )}
           {extra?.(b.id)}
@@ -134,6 +145,7 @@ export async function BuyerDetailPage({ role, id, base, extra }: { role: Role; i
           buyerId={b.id}
           nav={nav}
           role={role}
+          basicPending={basicPending}
           items={(b.requirement?.items ?? []).map((i) => ({
             id: i.id, sectorId: i.sectorId, sectorName: i.sector.name, status: i.status, everApproved: i.everApproved,
             baseline: baselineFor(i),

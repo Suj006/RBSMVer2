@@ -18,8 +18,8 @@ export function BuyerFilters({ action, filters, statuses, itemStatuses, countrie
       <Select name="status" defaultValue={filters.status ?? ""} aria-label="Buyer status">
         <option value="">All buyers</option>
         <option value="action">⚑ {actionLabel}</option>
-        <option value="basic_pending">Basic details not submitted / returned</option>
-        <option value="basic_approved">Basic details approved (all)</option>
+        <option value="basic_pending">Application not yet submitted</option>
+        <option value="basic_approved">Verified by FIEO (all)</option>
         {statuses.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
       </Select>
       <Select name="item" defaultValue={filters.item ?? ""} aria-label="Sector status">

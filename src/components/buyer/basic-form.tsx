@@ -10,10 +10,13 @@ import { COUNTRIES } from "@/lib/countries";
 
 type Doc = { id: string; originalName: string; size: number } | null;
 
-export function BasicForm({ buyer, docs, accept }: {
+/** "draft": the application before submission (saved directly). "change": a verified buyer's change, sent to FIEO for verification. */
+export function BasicForm({ buyer, docs, accept, mode = "draft", onCancel }: {
   buyer: { name: string; country: string; pocName: string | null; pocDesignation: string | null; pocEmail: string | null; pocMobile: string | null };
   docs: { PROFILE: Doc; CREDENTIALS: Doc };
   accept: string;
+  mode?: "draft" | "change";
+  onCancel?: () => void;
 }) {
   const [state, action, pending] = useActionState(saveBasicAction, undefined);
   const onSubmit = useKeepForm(action);
@@ -63,10 +66,12 @@ export function BasicForm({ buyer, docs, accept }: {
       </Card>
 
       <Card>
-        <CardHeader title="Documents" subtitle="PDF, JPG or PNG · up to 5 MB each. Uploading again replaces the earlier file." icon={<Upload className="size-4" />} />
+        <CardHeader title="Documents" subtitle={mode === "change"
+          ? "Upload a new file only to replace a verified document. PDF, JPG or PNG · up to 5 MB each."
+          : "PDF, JPG or PNG · up to 5 MB each. Uploading again replaces the earlier file."} icon={<Upload className="size-4" />} />
         <div className="grid gap-6 p-6 sm:grid-cols-2">
           {([["profileFile", "PROFILE", "Company profile"], ["credentialsFile", "CREDENTIALS", "Organisation credentials"]] as const).map(([field, kind, label]) => (
-            <Field key={field} label={label} htmlFor={field} required error={fe[field]}
+            <Field key={field} label={label} htmlFor={field} required={mode === "draft"} error={fe[field]}
               hint={kind === "CREDENTIALS" ? "e.g. certificate of incorporation, trade licence or import-export registration" : "Brochure or company profile document"}>
               <div className="space-y-2">
                 {docs[kind] && <DocLink doc={docs[kind]} />}
@@ -79,12 +84,16 @@ export function BasicForm({ buyer, docs, accept }: {
       </Card>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-        <Button type="submit" name="intent" value="save" variant="secondary" disabled={pending}>
-          <Save className="size-4" /> Save draft
-        </Button>
-        <Button type="submit" name="intent" value="submit" disabled={pending}>
-          <Send className="size-4" /> {pending ? "Submitting…" : "Submit to FIEO"}
-        </Button>
+        {onCancel && <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>}
+        {mode === "draft" ? (
+          <Button type="submit" variant="secondary" disabled={pending}>
+            <Save className="size-4" /> {pending ? "Saving…" : "Save basic details"}
+          </Button>
+        ) : (
+          <Button type="submit" disabled={pending}>
+            <Send className="size-4" /> {pending ? "Sending…" : "Send change to FIEO"}
+          </Button>
+        )}
       </div>
     </form>
   );

@@ -19,9 +19,9 @@ export const metadata: Metadata = { title: "Buyer dashboard" };
 type Step = { title: string; body: string; href?: string; cta?: string; tone: "blue" | "amber" | "red" | "green" };
 
 const BASIC_STEP: Partial<Record<BuyerStatus, Step>> = {
-  SIGNED_UP: { title: "Complete your basic details", body: "Add your point of contact and upload your company profile and organisation credentials, then submit them to FIEO.", href: "/buyer/profile", cta: "Fill basic details", tone: "blue" },
-  BASIC_RETURNED: { title: "Basic details need correction", body: "FIEO has returned your basic details. Please review the comment, update and submit again.", href: "/buyer/profile", cta: "Update basic details", tone: "red" },
-  BASIC_SUBMITTED: { title: "Under FIEO verification", body: "Your basic details are with FIEO. You'll receive an e-mail once they are approved.", tone: "amber" },
+  SIGNED_UP: { title: "Complete and submit your application", body: "Fill in your basic details and documents, your sourcing profile and at least one sector requirement, then submit everything to FIEO in one step.", href: "/buyer/application", cta: "Open my application", tone: "blue" },
+  BASIC_RETURNED: { title: "Application needs correction", body: "FIEO has returned your application. Please review the comment, update and submit again.", href: "/buyer/application", cta: "Update application", tone: "red" },
+  BASIC_SUBMITTED: { title: "Under FIEO verification", body: "Your application is with FIEO. You'll receive an e-mail once FIEO has reviewed it.", tone: "amber" },
 };
 
 export default async function BuyerDashboard() {
@@ -29,7 +29,7 @@ export default async function BuyerDashboard() {
   const [logs, requirement, docs] = await Promise.all([
     prisma.reviewLog.findMany({ where: { buyerId: b.id }, orderBy: { createdAt: "desc" }, include: { actor: { select: { displayName: true } } } }),
     prisma.requirement.findUnique({ where: { buyerId: b.id }, include: { items: { orderBy: { sortOrder: "asc" }, include: { sector: true } } } }),
-    prisma.document.count({ where: { buyerId: b.id } }),
+    prisma.document.count({ where: { buyerId: b.id, pending: false } }),
   ]);
   // Buyers see only comments addressed to them (not internal FIEO ↔ DIC notes).
   const visibleLogs = logs.map((l) => (l.action === "DIC_RETURNED" || l.action === "FIEO_RECOMMENDED" || l.action === "DIC_APPROVED" ? { ...l, comment: null } : l));
@@ -38,11 +38,12 @@ export default async function BuyerDashboard() {
   const n = (...s: (keyof typeof ITEM_META)[]) => items.filter((i) => s.includes(i.status)).length;
 
   const step: Step = BASIC_STEP[b.status] ?? (
-    n("FIEO_RETURNED") ? { title: `${n("FIEO_RETURNED")} sector${n("FIEO_RETURNED") > 1 ? "s" : ""} returned for correction`, body: "FIEO has returned some of your sector requirements. Review the comments, update and submit again. Other sectors are not affected.", href: "/buyer/requirement", cta: "Update requirements", tone: "red" }
-    : n("DRAFT") ? { title: `${n("DRAFT")} draft sector${n("DRAFT") > 1 ? "s" : ""} not yet submitted`, body: "Submit your draft sector requirements to FIEO for recommendation.", href: "/buyer/requirement", cta: "Review and submit", tone: "blue" }
-    : !items.length ? { title: "Add your sector requirements", body: "Your basic details are approved. Tell us which sectors and products you want to source — each sector is approved separately.", href: "/buyer/requirement", cta: "Add requirements", tone: "blue" }
+    b.changeState === "RETURNED" ? { title: "Change to your details returned", body: "FIEO has returned the change you asked for in your basic details or sourcing profile. Review the comment, correct it and send it again.", href: "/buyer/application", cta: "Review change", tone: "red" }
+    : n("FIEO_RETURNED", "FIEO_REJECTED") ? { title: `${n("FIEO_RETURNED", "FIEO_REJECTED")} sector${n("FIEO_RETURNED", "FIEO_REJECTED") > 1 ? "s" : ""} returned or rejected by FIEO`, body: "Review FIEO's comments, edit these sectors and submit them again. Other sectors are not affected.", href: "/buyer/application#sectors", cta: "Update sectors", tone: "red" }
+    : n("DRAFT") ? { title: `${n("DRAFT")} draft sector${n("DRAFT") > 1 ? "s" : ""} not yet submitted`, body: "Submit your draft sector requirements to FIEO for verification.", href: "/buyer/application#sectors", cta: "Review and submit", tone: "blue" }
+    : !items.length ? { title: "Add your sector requirements", body: "Tell us which sectors and products you want to source — each sector is verified by FIEO and approved by the Directorate.", href: "/buyer/application#sectors", cta: "Add requirements", tone: "blue" }
     : n("SUBMITTED", "FIEO_RECOMMENDED", "DIC_RETURNED") ? { title: `${n("SUBMITTED", "FIEO_RECOMMENDED", "DIC_RETURNED")} sector${n("SUBMITTED", "FIEO_RECOMMENDED", "DIC_RETURNED") > 1 ? "s" : ""} under review`, body: b.status === "APPROVED" ? "You are an approved buyer. The sectors below are being reviewed; you'll be notified by e-mail." : "Your sector requirements are with FIEO and the Directorate. You'll be notified by e-mail.", tone: "amber" }
-    : { title: "You are an approved RBSM buyer", body: "All your sectors are approved. You can add new sectors or modify approved ones at any time — changes go through the same approval.", href: "/buyer/requirement", cta: "Manage requirements", tone: "green" }
+    : { title: "You are an approved RBSM buyer", body: "All your sectors are approved. You can add new sectors or modify approved ones at any time — changes go through FIEO and the Directorate again. Changes to your basic details and sourcing profile are verified by FIEO.", href: "/buyer/application", cta: "Manage my application", tone: "green" }
   );
   const Icon = step.tone === "green" ? BadgeCheck : step.tone === "red" ? AlertTriangle : step.href ? ArrowRight : Clock;
 
@@ -82,14 +83,14 @@ export default async function BuyerDashboard() {
             )}
           </Card>
 
-          {(b.status === "BASIC_APPROVED" || b.status === "APPROVED") && (
+          {items.length > 0 && (
             <Card>
               <CardHeader title="My sectors" subtitle="Approval status of each sector requirement"
-                action={<Link href="/buyer/requirement" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline"><Plus className="size-4" /> Add / modify</Link>} />
+                action={<Link href="/buyer/application#sectors" className="inline-flex items-center gap-1 text-sm font-semibold text-brand-700 hover:underline"><Plus className="size-4" /> Add / modify</Link>} />
               <ul className="divide-y divide-slate-100">
                 {items.map((i) => (
                   <li key={i.id}>
-                    <Link href={`/buyer/requirement#item-${i.id}`} className="group flex flex-wrap items-center justify-between gap-2 px-6 py-3 hover:bg-slate-50">
+                    <Link href={`/buyer/application#item-${i.id}`} className="group flex flex-wrap items-center justify-between gap-2 px-6 py-3 hover:bg-slate-50">
                       <div className="min-w-0">
                         <div className="font-semibold text-ink group-hover:text-brand-700">{i.sector.name}</div>
                         <div className="truncate text-xs text-slate-500">{i.products}</div>

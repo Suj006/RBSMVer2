@@ -44,7 +44,7 @@ const split = (s: string) => s.split(/[,\n;]/).map((x) => x.trim()).filter(Boole
  */
 export function SectorContent({ current, baseline }: {
   current: ItemSnapshot;
-  baseline?: { label: "approved version" | "version returned by FIEO"; snap: ItemSnapshot } | null;
+  baseline?: { label: "approved version" | "version FIEO returned or rejected"; snap: ItemSnapshot } | null;
 }) {
   const [showOld, setShowOld] = useState(false);
   const changes: Change[] = baseline ? diffItem(baseline.snap, current) : [];

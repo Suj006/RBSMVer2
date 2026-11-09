@@ -11,8 +11,7 @@ export default async function BuyerLayout({ children }: { children: React.ReactN
       user={user}
       nav={[
         { href: "/buyer", label: "Dashboard", icon: "dashboard", exact: true },
-        { href: "/buyer/profile", label: "Basic details", icon: "profile" },
-        { href: "/buyer/requirement", label: "Detailed requirement", icon: "requirement" },
+        { href: "/buyer/application", label: "My application", icon: "requirement" },
         { href: "/buyer/matches", label: "Matched sellers", icon: "sellers" },
         { href: "/buyer/meetings", label: "My meetings", icon: "calendar" },
         { href: "/buyer/mou", label: "MoUs", icon: "mou" },

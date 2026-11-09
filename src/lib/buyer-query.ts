@@ -17,12 +17,13 @@ export function scopeFor(_role: Role): Prisma.BuyerWhereInput {
   return {};
 }
 
-/** Buyers waiting for this role's decision (basic details or any sector). */
+/** Buyers waiting for this role's decision (a submitted application, a requested change, or any sector). */
 export function actionWhere(role: Role): Prisma.BuyerWhereInput {
   if (role === "DIC") return { requirement: { items: { some: { status: { in: DIC_ITEM_QUEUE } } } } };
   return {
     OR: [
       { status: "BASIC_SUBMITTED" },
+      { changeState: "SUBMITTED" },
       { requirement: { items: { some: { status: { in: FIEO_ITEM_QUEUE } } } } },
     ],
   };

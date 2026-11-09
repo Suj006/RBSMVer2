@@ -73,7 +73,7 @@ Your login credentials:
 User name: ${username}
 Password: ${password}
 
-Sign in at ${APP_URL}/login. You will be asked to change your password on first login and then to complete your basic details.${signature}`,
+Sign in at ${APP_URL}/login. You will be asked to change your password on first login and then to complete your application (basic details, sourcing profile and sector requirements) and submit it to FIEO.${signature}`,
   }),
   addedByFieo: (name: string, username: string, password: string, sectors: number) => ({
     subject: `${EVENT.name} ${EVENT.short} — you have been registered as a buyer (temporary login)`,
@@ -114,6 +114,38 @@ FIEO has returned the following sector requirement${items.length > 1 ? "s" : ""}
 ${items.map((i) => `• ${i.sector}: "${i.comment}"`).join("\n")}
 
 Please sign in, update ${items.length > 1 ? "them" : "it"} and submit again. Your other sectors are not affected.${signature}`,
+  }),
+  fieoReview: (name: string, r: { returned: { sector: string; comment: string }[]; rejected: { sector: string; comment: string }[]; basicComment: string | null }) => ({
+    subject: `${EVENT.name} ${EVENT.short} — FIEO has reviewed your application`,
+    text: `Dear ${name},
+
+FIEO has reviewed your application.
+${r.basicComment ? `
+Comment on your basic details: "${r.basicComment}"
+` : ""}${r.returned.length ? `
+Returned for correction:
+${r.returned.map((i) => `• ${i.sector}: "${i.comment}"`).join("\n")}
+` : ""}${r.rejected.length ? `
+Rejected:
+${r.rejected.map((i) => `• ${i.sector}: "${i.comment}"`).join("\n")}
+` : ""}
+${r.returned.length || r.rejected.length ? "You can sign in, edit these sectors and submit them again. " : ""}Sectors approved by FIEO go to the Directorate for approval.${signature}`,
+  }),
+  changeVerified: (name: string) => ({
+    subject: `${EVENT.name} ${EVENT.short} — change to your details verified`,
+    text: `Dear ${name},
+
+FIEO has verified the change to your basic details / sourcing profile. The updated details are now in use.${signature}`,
+  }),
+  changeReturned: (name: string, comment: string) => ({
+    subject: `${EVENT.name} ${EVENT.short} — change to your details returned`,
+    text: `Dear ${name},
+
+FIEO has returned the change to your basic details / sourcing profile with the following comment:
+
+"${comment}"
+
+Your verified details are unchanged. Please sign in, correct the change and send it again.${signature}`,
   }),
   sectorsApproved: (name: string, approvedNo: string, sectors: string[], firstTime: boolean, username?: string) => ({
     subject: firstTime
