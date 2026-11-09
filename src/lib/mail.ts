@@ -178,43 +178,81 @@ Further details on matchmaking and B2B meeting schedules will follow.${signature
 };
 
 export const sellerMail = {
-  received: (name: string, regNo: string, district: string, username: string, password: string) => ({
+  received: (name: string, regNo: string, district: string, taluk: string, username: string, password: string | null, byDistrict = false) => ({
     subject: `${EVENT.name} ${EVENT.short} — seller registration received (${regNo})`,
     text: `Dear ${name},
 
-Thank you for registering as a seller for ${EVENT.name} ${EVENT.programme}.
+${byDistrict ? `The District Industries Centre, ${district}, has registered your enterprise` : "Thank you for registering"} as a seller for ${EVENT.name} ${EVENT.programme}.
 
 Your registration number: ${regNo}
 
-Your details will be verified by the District Industries Centre, ${district}, and recommended to the Directorate of Industries & Commerce.
+Next steps:
+1. The Taluk Industries Office, ${taluk}, verifies your details and recommends your application.
+2. The Directorate of Industries & Commerce gives initial approval.
+3. You attend an awareness session (the date, time and venue will be sent to you).
+4. The Directorate gives final approval: your seller number and permanent login.
 
 Temporary login to track your application:
 User name: ${username}
-Password: ${password}
+${password ? `Password: ${password}
+(You will be asked to set your own password when you sign in.)` : "(use the password you have set)"}
 
-Sign in at ${APP_URL}/login to see the status of your application. If the District Industries Centre asks for a correction, you can correct your details and resubmit them with this login. Once the Directorate approves your registration, the same login becomes your permanent seller login.${signature}`,
+Sign in at ${APP_URL}/login to see the status of your application. If the taluk office asks for a correction, you can correct your details and resubmit them with this login.${signature}`,
   }),
-  /** Applicant login given when a district office sends an application back for correction. */
-  sentBack: (name: string, regNo: string, district: string, comment: string, login: { username: string; password: string | null }) => ({
+  /** The taluk office sends an application back to the applicant for correction. */
+  sentBack: (name: string, regNo: string, taluk: string, comment: string, login: { username: string; password: string | null }) => ({
     subject: `${EVENT.name} ${EVENT.short} — please correct your seller registration (${regNo})`,
     text: `Dear ${name},
 
-The District Industries Centre, ${district}, has returned your seller registration ${regNo} for correction:
+The Taluk Industries Office, ${taluk}, has returned your seller registration ${regNo} for correction:
 
 "${comment}"
 
-Please sign in at ${APP_URL}/login, correct the details and resubmit them to the district centre.
+Please sign in at ${APP_URL}/login, correct the details and resubmit them.
 ${login.password ? `
 User name: ${login.username}
 Password: ${login.password}
 (You will be asked to set your own password when you sign in.)` : `
 User name: ${login.username} (use the password you have set)`}${signature}`,
   }),
+  notRecommended: (name: string, regNo: string, taluk: string, comment: string) => ({
+    subject: `${EVENT.name} ${EVENT.short} — seller registration ${regNo} not recommended`,
+    text: `Dear ${name},
+
+The Taluk Industries Office, ${taluk}, has not recommended your seller registration ${regNo}, for the following reason:
+
+"${comment}"
+
+For clarification, please contact the taluk office.${signature}`,
+  }),
+  initialApproved: (name: string, regNo: string) => ({
+    subject: `${EVENT.name} ${EVENT.short} — initial approval (${regNo})`,
+    text: `Dear ${name},
+
+Your seller registration ${regNo} has been given initial approval by the Directorate of Industries & Commerce.
+
+Next step: please attend an awareness session. You will be informed of its date, time and venue by e-mail, and you can also see it when you sign in at ${APP_URL}/login with your temporary login.
+
+Your seller number and permanent login are given after the session, on the Directorate's final approval.${signature}`,
+  }),
+  batch: (name: string, regNo: string, b: { name: string; day: string; time: string; venue: string }, moved: boolean) => ({
+    subject: `${EVENT.name} ${EVENT.short} — awareness session ${moved ? "changed" : "scheduled"} (${regNo})`,
+    text: `Dear ${name},
+
+${moved ? "Your awareness session has been changed. Please attend the new session:" : "You have been scheduled for an awareness session:"}
+
+${b.name}
+Date: ${b.day}
+Time: ${b.time}
+Venue: ${b.venue}
+
+Attendance is recorded at the session. After it, the Directorate gives final approval and your permanent login.${signature}`,
+  }),
   approved: (name: string, approvedNo: string, username: string, password: string | null) => ({
     subject: `${EVENT.name} ${EVENT.short} — seller registration approved (${approvedNo})`,
     text: `Dear ${name},
 
-We are pleased to inform you that your registration has been approved by the Directorate of Industries & Commerce and you have been added to the ${EVENT.short} seller list.
+We are pleased to inform you that your registration has been given final approval by the Directorate of Industries & Commerce and you have been added to the ${EVENT.short} seller list.
 
 Your seller number: ${approvedNo}
 
@@ -234,7 +272,7 @@ Your seller registration ${regNo} could not be accepted, for the following reaso
 
 "${comment}"
 
-For clarification, please contact your District Industries Centre.${signature}`,
+For clarification, please contact your Taluk Industries Office or District Industries Centre.${signature}`,
   }),
 };
 

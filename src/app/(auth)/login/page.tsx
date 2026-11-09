@@ -17,7 +17,7 @@ export default async function LoginPage() {
         <ArrowLeft className="size-4" /> Back to home
       </Link>
       <h1 className="text-3xl font-extrabold tracking-tight text-ink">Sign in</h1>
-      <p className="mb-8 mt-2 text-sm text-slate-500">Buyers, sellers, District Industries Centres, FIEO and the Directorate sign in here.</p>
+      <p className="mb-8 mt-2 text-sm text-slate-500">Buyers, sellers, District and Taluk Industries Offices, FIEO, the training admin and the Directorate sign in here.</p>
       <LoginForm />
     </>
   );

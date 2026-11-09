@@ -14,23 +14,26 @@ import { UdyamInput } from "./udyam-input";
 import { cn } from "@/lib/cn";
 import { EMPTY_SELLER, type SellerFormValues } from "@/lib/seller-form-defaults";
 
-export function SellerForm({ mode, initial, sectors, certifications, district, backHref }: {
-  /** district: a district office; self: public self-registration; applicant: the applicant correcting their own registration. */
-  mode: "district" | "self" | "applicant";
+export function SellerForm({ mode, initial, sectors, certifications, district, taluk, backHref }: {
+  /** district / taluk: a district or taluk office; self: public self-registration; applicant: the applicant correcting their own registration. */
+  mode: "district" | "taluk" | "self" | "applicant";
   initial: SellerFormValues;
   sectors: { id: string; name: string }[];
   /** Certification master names. */
   certifications: string[];
   district?: string;
+  /** Taluk office: its own taluk (fixed). */
+  taluk?: string;
   backHref?: string;
 }) {
   const [state, action, pending] = useActionState(mode === "self" ? selfRegisterSellerAction : mode === "applicant" ? applicantSaveSellerAction : saveSellerAction, undefined);
   const onSubmit = useKeepForm(action);
+  const staff = mode === "district" || mode === "taluk";
   const [rows, setRows] = useState(initial.products.length ? initial.products : EMPTY_SELLER.products);
   const [same, setSame] = useState(!initial.contactWhatsapp || initial.contactWhatsapp === initial.contactMobile);
   const fe = state?.fieldErrors ?? {};
   const used = new Set(rows.map((r) => r.sectorId));
-  const [dist, setDist] = useState(mode === "district" ? district ?? "" : initial.district);
+  const [dist, setDist] = useState(staff ? district ?? "" : initial.district);
   const [lbt, setLbt] = useState(initial.localBodyType);
   const [exp, setExp] = useState(initial.exportExperience);
   const taluks = TALUKS[dist] ?? [];
@@ -49,14 +52,14 @@ export function SellerForm({ mode, initial, sectors, certifications, district, b
           </div>
         </div>
         <Alert tone="green" className="mt-6">
-          Your details have been sent to the District Industries Centre, {state.data.district}, for verification.
+          Your details have been sent to the Taluk Industries Office, {state.data.taluk} ({state.data.district} district), for verification.
         </Alert>
         <div className="mt-4 rounded-xl bg-slate-50 p-5 ring-1 ring-slate-200">
           <div className="font-bold text-ink">Your temporary login</div>
           <p className="mt-1 text-sm text-slate-600">
             User name <span className="font-mono font-semibold text-ink">{state.data.username}</span> — the password has been e-mailed to {state.data.email}.
-            Use it to track your application and to correct your details if the district centre asks. Once the Directorate approves
-            your registration, the same login becomes your permanent seller login.
+            Use it to track your application, to correct your details if the taluk office asks, and to see your awareness session.
+            After the session and the Directorate&apos;s final approval, the same login becomes your permanent seller login.
           </p>
         </div>
         <div className="mt-6 flex flex-wrap gap-3">
@@ -86,7 +89,7 @@ export function SellerForm({ mode, initial, sectors, certifications, district, b
             <Input id="name" name="name" defaultValue={initial.name} maxLength={160} />
           </Field>
           <Field label="District" htmlFor="district" required error={fe.district}>
-            {mode === "district" ? (
+            {staff ? (
               <>
                 <Input id="district" value={district} disabled />
                 <input type="hidden" name="district" value={district} />
@@ -99,10 +102,17 @@ export function SellerForm({ mode, initial, sectors, certifications, district, b
             )}
           </Field>
           <Field label="Taluk" htmlFor="taluk" required error={fe.taluk}>
-            <Select key={`t-${dist}`} id="taluk" name="taluk" defaultValue={dist === initial.district ? initial.taluk : ""} disabled={!dist}>
-              <option value="">{dist ? "Select taluk…" : "Select the district first"}</option>
-              {withCurrent(taluks, dist === initial.district ? initial.taluk : "").map((t) => <option key={t}>{t}</option>)}
-            </Select>
+            {mode === "taluk" ? (
+              <>
+                <Input id="taluk" value={taluk} disabled />
+                <input type="hidden" name="taluk" value={taluk} />
+              </>
+            ) : (
+              <Select key={`t-${dist}`} id="taluk" name="taluk" defaultValue={dist === initial.district ? initial.taluk : ""} disabled={!dist}>
+                <option value="">{dist ? "Select taluk…" : "Select the district first"}</option>
+                {withCurrent(taluks, dist === initial.district ? initial.taluk : "").map((t) => <option key={t}>{t}</option>)}
+              </Select>
+            )}
           </Field>
           <Field label="Local body type" htmlFor="localBodyType" required error={fe.localBodyType}>
             <Select id="localBodyType" name="localBodyType" value={lbt} onChange={(e) => setLbt(e.target.value)}>
@@ -167,7 +177,7 @@ export function SellerForm({ mode, initial, sectors, certifications, district, b
             <Input id="contactName" name="contactName" defaultValue={initial.contactName} maxLength={120} autoComplete="name" />
           </Field>
           <Field label="E-mail ID" htmlFor="contactEmail" required error={fe.contactEmail}
-            hint={mode === "district" ? "Login credentials are sent here after approval" : "Login details and updates on your application are sent here"}>
+            hint={staff ? "The temporary login and updates on the application are sent here" : "Login details and updates on your application are sent here"}>
             <Input id="contactEmail" name="contactEmail" type="email" defaultValue={initial.contactEmail} maxLength={160} autoComplete="email" />
           </Field>
           <Field label="Mobile number" htmlFor="contactMobile" required error={fe.contactMobile} hint="10-digit mobile number">
@@ -219,13 +229,15 @@ export function SellerForm({ mode, initial, sectors, certifications, district, b
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         {backHref && <ButtonLink href={backHref} variant="ghost">Cancel</ButtonLink>}
-        {mode === "district" ? (
+        {mode === "taluk" ? (
           <>
             <Button type="submit" name="intent" value="save" variant="secondary" disabled={pending}><Save className="size-4" /> Save</Button>
             <Button type="submit" name="intent" value="recommend" disabled={pending}><Send className="size-4" /> {pending ? "Saving…" : "Save & recommend to Directorate"}</Button>
           </>
+        ) : mode === "district" ? (
+          <Button type="submit" name="intent" value="save" disabled={pending} className="px-6"><Save className="size-4" /> {pending ? "Saving…" : initial.id ? "Save" : "Register seller"}</Button>
         ) : mode === "applicant" ? (
-          <Button type="submit" disabled={pending} className="px-6"><Send className="size-4" /> {pending ? "Submitting…" : "Save & submit to district centre"}</Button>
+          <Button type="submit" disabled={pending} className="px-6"><Send className="size-4" /> {pending ? "Submitting…" : "Save & submit to taluk office"}</Button>
         ) : (
           <Button type="submit" disabled={pending} className="px-6"><Send className="size-4" /> {pending ? "Submitting…" : "Submit registration"}</Button>
         )}

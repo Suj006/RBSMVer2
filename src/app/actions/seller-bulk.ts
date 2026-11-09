@@ -2,7 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth";
+import { hashPassword, requireUser } from "@/lib/auth";
+import { EVENT } from "@/lib/config";
+import { sendMail, sellerMail } from "@/lib/mail";
+import { ensureSellerLogin } from "@/lib/seller-login";
 import { parseUpload } from "@/lib/seller-bulk";
 import { createSeller } from "@/lib/seller-create";
 
@@ -32,13 +35,20 @@ export async function bulkUploadAction(_: BulkState, form: FormData): Promise<Bu
   if (form.get("intent") !== "import") return { rows: summary, valid: valid.length, fileName: file.name };
   if (!valid.length) return { error: "No valid rows to import. Correct the errors and upload again.", rows: summary, valid: 0, fileName: file.name };
 
+  // Each seller gets a temporary login (e-mailed) and goes to its taluk office for verification.
+  const passwordHash = await hashPassword(EVENT.defaultBuyerPassword);
   const imported: { regNo: string; name: string }[] = [];
+  const mails: { to: string; subject: string; text: string }[] = [];
   await prisma.$transaction(async (tx) => {
     for (const r of valid) {
       const s = await createSeller(tx, r.data!, "BULK", { id: user.id, role: "DISTRICT" });
+      const login = await ensureSellerLogin(tx, s, passwordHash);
       imported.push({ regNo: s.regNo, name: s.name });
+      const m = sellerMail.received(s.name, s.regNo, s.district, s.taluk, login.username, EVENT.defaultBuyerPassword, true);
+      mails.push({ to: s.contactEmail, subject: m.subject, text: m.text });
     }
-  }, { timeout: 60_000 });
-  for (const p of ["/district", "/admin"]) revalidatePath(p, "layout");
+  }, { timeout: 120_000 });
+  for (const m of mails) await sendMail(m.to, m.subject, m.text);
+  for (const p of ["/district", "/taluk", "/dic", "/admin"]) revalidatePath(p, "layout");
   return { imported, rows: summary.filter((r) => r.errors.length), valid: 0, fileName: file.name };
 }

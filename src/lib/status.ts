@@ -50,12 +50,14 @@ export const ROLE_LABEL: Record<Role, string> = {
   DISTRICT: "District Industries Centre",
   SELLER: "Seller",
   NODAL: "Nodal officer",
+  TALUK: "Taluk office",
+  TRAINING: "Training admin",
 };
 
 /** Short label for the portal badge in the sidebar. */
 export const ROLE_BADGE: Record<Role, string> = {
   BUYER: "Buyer portal", FIEO: "FIEO portal", DIC: "Directorate portal", ADMIN: "Admin portal",
-  DISTRICT: "District office", SELLER: "Seller portal", NODAL: "Nodal officer",
+  DISTRICT: "District office", SELLER: "Seller portal", NODAL: "Nodal officer", TALUK: "Taluk office", TRAINING: "Training admin",
 };
 
 export const ROLE_HOME: Record<Role, string> = {
@@ -66,6 +68,8 @@ export const ROLE_HOME: Record<Role, string> = {
   DISTRICT: "/district",
   SELLER: "/seller",
   NODAL: "/nodal",
+  TALUK: "/taluk",
+  TRAINING: "/training",
 };
 
 // Registration journey (buyer level): one application (basic details, sourcing profile and sectors)
@@ -94,10 +98,13 @@ export const ITEM_TO_SUBMIT: ItemStatus[] = ["DRAFT", "FIEO_RETURNED", "FIEO_REJ
 // ---------------------------------------------------------------- sellers
 
 export const SELLER_META: Record<SellerStatus, { label: string; short: string; tone: Tone; dot: string }> = {
-  WITH_DISTRICT: { label: "Pending district recommendation", short: "With district", tone: "amber", dot: "bg-tx-yellow" },
+  WITH_TALUK: { label: "Pending taluk verification", short: "With taluk", tone: "amber", dot: "bg-tx-yellow" },
   WITH_SELLER: { label: "Returned to applicant for correction", short: "With applicant", tone: "blue", dot: "bg-tx-blue" },
-  RECOMMENDED: { label: "Awaiting Directorate approval", short: "With Directorate", tone: "violet", dot: "bg-violet-500" },
-  RETURNED: { label: "Returned to district", short: "Returned", tone: "red", dot: "bg-tx-red" },
+  NOT_RECOMMENDED: { label: "Not recommended by taluk", short: "Not recommended", tone: "slate", dot: "bg-slate-500" },
+  RECOMMENDED: { label: "Recommended — awaiting initial approval", short: "With Directorate", tone: "violet", dot: "bg-violet-500" },
+  RETURNED: { label: "Returned to taluk by Directorate", short: "Returned", tone: "red", dot: "bg-tx-red" },
+  INITIAL_APPROVED: { label: "Initially approved — awareness session", short: "Awareness session", tone: "blue", dot: "bg-sky-500" },
+  TRAINED: { label: "Session attended — awaiting final approval", short: "Awaiting final approval", tone: "violet", dot: "bg-indigo-500" },
   APPROVED: { label: "Approved seller", short: "Approved", tone: "green", dot: "bg-tx-green" },
   REJECTED: { label: "Rejected", short: "Rejected", tone: "slate", dot: "bg-slate-400" },
 };
@@ -108,10 +115,16 @@ export const SELLER_ACTION_LABEL: Record<SellerAction, string> = {
   UPDATED: "Details updated",
   SENT_TO_SELLER: "Returned to applicant for correction",
   RESUBMITTED: "Corrected and resubmitted by applicant",
-  RECOMMENDED: "Recommended to Directorate",
-  RETURNED: "Returned to district",
-  APPROVED: "Approved — login allotted",
-  REJECTED: "Rejected",
+  RECOMMENDED: "Recommended by taluk office",
+  NOT_RECOMMENDED: "Not recommended by taluk office",
+  RETURNED: "Returned to taluk office by Directorate",
+  INITIAL_APPROVED: "Initially approved by Directorate",
+  BATCH_ASSIGNED: "Assigned to awareness session",
+  ATTENDED: "Attended awareness session",
+  ABSENT: "Absent from awareness session",
+  APPROVED: "Final approval — seller number and permanent login",
+  BYPASSED: "Final approval without awareness session (Directorate)",
+  REJECTED: "Rejected by Directorate",
   PROFILE_UPDATED: "Seller profile updated by the seller",
 };
 
@@ -119,9 +132,14 @@ export const SELLER_ACTION_LABEL: Record<SellerAction, string> = {
 export const SELLER_VISIBLE: Partial<Record<Role, SellerStatus[]>> = {
   FIEO: ["APPROVED"],
 };
-/** The district can edit (and recommend) these. */
-export const SELLER_DISTRICT_EDITABLE: SellerStatus[] = ["WITH_DISTRICT", "RETURNED"];
-/** Sellers still in verification (not yet approved or rejected). */
-export const SELLER_PENDING: SellerStatus[] = ["WITH_DISTRICT", "WITH_SELLER", "RETURNED", "RECOMMENDED"];
-/** An applicant with a temporary login can correct their own details in these (and resubmit to the district). */
-export const SELLER_APPLICANT_EDITABLE: SellerStatus[] = ["WITH_DISTRICT", "WITH_SELLER"];
+/** The taluk office (and the district office that entered it) can edit these; the taluk office decides on them. */
+export const SELLER_TALUK_EDITABLE: SellerStatus[] = ["WITH_TALUK", "RETURNED"];
+/** Sellers still in the approval process (not yet finally approved, not recommended or rejected). */
+export const SELLER_PENDING: SellerStatus[] = ["WITH_TALUK", "WITH_SELLER", "RETURNED", "RECOMMENDED", "INITIAL_APPROVED", "TRAINED"];
+/** An applicant with a temporary login can correct their own details in these (and resubmit to the taluk office). */
+export const SELLER_APPLICANT_EDITABLE: SellerStatus[] = ["WITH_TALUK", "WITH_SELLER"];
+/** Statuses each role acts on ("Needs my action"). */
+export const SELLER_ACTION: Partial<Record<Role, SellerStatus[]>> = {
+  TALUK: ["WITH_TALUK", "RETURNED"],
+  DIC: ["RECOMMENDED", "TRAINED"],
+};

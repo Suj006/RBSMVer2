@@ -51,19 +51,35 @@ another in the same step), with "Recommend all" / "Approve all" shortcuts.
 
 ```
 District office enters a seller (form or bulk Excel upload)  ─┐
-Seller self-registers and chooses a district ─────────────────┴─► with that district office
-   (online applicants get a temporary login Tradex2027-SNNN at once)
-   ─► District recommends (one or many at once) / returns to the applicant for correction / rejects
-        └─ applicant corrects and resubmits with the temporary login ─► back with the district
-   ─► Directorate approves / returns to district / rejects
-   ─► approved: seller number RBSM-Seller-2026NNN, visible to FIEO; the applicant's login becomes the
-      permanent seller login (district-entered sellers get their login e-mailed now)
+Seller self-registers (district and taluk) ───────────────────┴─► with that Taluk Industries Office
+   (every seller gets a temporary login Tradex2027-SNNN at once, e-mailed; visible to the district office too)
+   ─► Taluk office verifies, may edit, and: recommends (one or many) / returns to the applicant / not recommended
+        └─ applicant corrects and resubmits with the temporary login ─► back with the taluk office
+   ─► Directorate initial approval (one or many) / returns to the taluk office / rejects
+   ─► Awareness session: Admin creates sessions (date, time, venue, district or all districts; the name is
+      generated, e.g. "Batch 03 · Ernakulam · Tue, 12 Dec 2026"); Admin, the Directorate and the district office
+      place initially approved sellers in a session (and can move or remove them); sellers are e-mailed
+   ─► Training admin marks attendance: present ─► with the Directorate for final approval
+                                         absent  ─► placed in another session, or (case by case, with a reason)
+                                                    given final approval by the Directorate without a session
+   ─► Final approval (one or many) / reject: seller number RBSM-Seller-2026NNN; the temporary login becomes the
+      permanent seller login. Only finally approved sellers are visible to FIEO and go to matchmaking.
 ```
 
-Until approval, a seller login shows only **My application**: progress, the district's comments, and (while
-with the district or returned to the applicant) the form to correct and resubmit the details. After approval
-it opens the full seller dashboard. A district can also return a district-entered seller to the applicant;
-a login is then created and e-mailed.
+Until final approval, a seller login shows only **My application**: progress (registered → taluk verification →
+initial approval → awareness session → final approval), the taluk office's comments, the awareness session's date,
+time and venue, and (while with the taluk office or returned to the applicant) the form to correct and resubmit the
+details. After final approval it opens the full seller dashboard.
+
+Dashboards (Directorate, Admin, district, taluk) show the count at every stage — registered, with taluk, with
+applicant, recommended, not recommended, awaiting initial approval, awaiting / placed in a session, absent,
+attended, awaiting final approval, approved, approved without session, rejected — with a district-wise
+(Directorate) or taluk-wise (district office) table. Reports: **Taluk-wise Seller Summary**, **Awareness Session
+Attendance** (all sessions or one session, sellers awaiting a session, sellers approved without a session) and the
+**District-wise Seller Summary** with the new stages.
+
+To start the new flow with no sellers, `npm run db:clear-sellers -- --yes` deletes all sellers and their logins
+(buyers and staff are kept; add `--sessions` to delete the awareness sessions too).
 
 Seller details at registration: name, district (14 Kerala districts), taluk (drop-down by district), local body type
 (Panchayat / Municipality / Corporation) and name (municipalities and corporations from a drop-down; grama panchayat typed in),
@@ -256,9 +272,11 @@ A decision page built from live data, with an Excel / PDF report of every sectio
 | FIEO | `fieo` | `pass@123` | See all buyers, approve / return basic details, recommend / return each sector |
 | Directorate | `dic123` | `dic123` | Central team: sees the whole programme — every buyer, sector and seller at every stage, all documents and all reports. Approves FIEO-recommended sectors (first approval adds the buyer to the RBSM list) / returns to FIEO; approves district-recommended sellers; sets targets |
 | Admin | `admin` | `admin` | Sector & certification masters, users, buyer password reset, e-mail outbox, all reports |
-| District offices (14) | `dic-tvm`, `dic-klm`, `dic-pta`, `dic-alp`, `dic-ktm`, `dic-idk`, `dic-ekm`, `dic-tsr`, `dic-pkd`, `dic-mlp`, `dic-kkd`, `dic-wyd`, `dic-knr`, `dic-ksd` | `pass@123` | Register sellers of their district (form / bulk Excel upload, up to 5 sectors per row), recommend or reject |
+| District offices (14) | `dic-tvm`, `dic-klm`, `dic-pta`, `dic-alp`, `dic-ktm`, `dic-idk`, `dic-ekm`, `dic-tsr`, `dic-pkd`, `dic-mlp`, `dic-kkd`, `dic-wyd`, `dic-knr`, `dic-ksd` | `pass@123` | Register sellers of their district (form / bulk Excel upload, up to 5 sectors per row), place initially approved sellers in awareness sessions |
+| Taluk offices (78) | `tlk-<taluk>`, e.g. `tlk-aluva`, `tlk-neyyattinkara`, `tlk-kanayannur` | `pass@123` | Verify and edit the sellers of their taluk; recommend / return to the applicant / not recommended |
+| Training admin | `training` | `pass@123` | See the sellers placed in each awareness session and mark attendance |
 | Buyer | `Tradex2027-NNN` | `pass@123` (must change on first login) | Own profile and requirement |
-| Seller | `Tradex2027-SNNN` (allotted on approval) | `pass@123` (must change on first login) | Own seller dashboard |
+| Seller | `Tradex2027-SNNN` (allotted at registration; temporary until final approval) | `pass@123` (must change on first login) | My application until final approval, then the seller dashboard |
 | Nodal officer | `nodal01` … (created by the Directorate; demo: `nodal01`–`nodal04`) | `pass@123` | Their buyers' meeting schedules, ticket / seller-ID verification, attendance |
 
 Staff passwords can be changed from **Admin → Users & logins**.
@@ -315,7 +333,7 @@ the day to move the event to the new time. Then open **Event days & schedule →
 **MoU dashboard** (Directorate `dic123`), or log in as a nodal officer (`nodal01`–`nodal04`, `pass@123`).
 
 After updating from an older version, run `npx prisma migrate deploy` (database changes) and
-`npm run db:seed` (adds new logins such as the district offices; existing data is kept). Once, run
+`npm run db:seed` (adds new logins such as the district, taluk and training logins; existing data is kept). Once, run
 `npm run db:normalize` to re-format names already saved.
 
 Production: `npm run build && npm start`. Set `APP_URL` and the `SMTP_*` variables in `.env` so buyers

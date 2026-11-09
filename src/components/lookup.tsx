@@ -75,7 +75,8 @@ function Keys({ items }: { items: [string, React.ReactNode][] }) {
 export async function IdLookup({ user, base, q: raw }: { user: User; base: string; q?: string }) {
   const q = (raw ?? "").trim();
   const Q = q.toUpperCase();
-  const district = user.role === "DISTRICT";
+  // District and taluk offices look up sellers only.
+  const district = user.role === "DISTRICT" || user.role === "TALUK";
   const cfg = await getEventConfig();
   const dayNo = new Map(cfg.days.map((d) => [d.date, d.n]));
 
@@ -121,7 +122,7 @@ export async function IdLookup({ user, base, q: raw }: { user: User; base: strin
   buyers.sort((a, b) => Number(exact(b)) - Number(exact(a)));
   sellers.sort((a, b) => Number(exact(b)) - Number(exact(a)));
   const few = buyers.length + sellers.length <= 3;
-  const sellerHref = (id: string) => district ? `/district/sellers/${id}` : `${base}/sellers/${id}`;
+  const sellerHref = (id: string) => `${base}/sellers/${id}`;
   const showTicket = ticket ? Q : "";
 
   return (

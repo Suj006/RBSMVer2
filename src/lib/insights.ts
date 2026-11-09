@@ -41,7 +41,7 @@ export async function buildInsights(user: User) {
       select: { id: true, status: true, sectorId: true, certifications: true, submittedAt: true, recommendedAt: true, approvedAt: true, updatedAt: true,
         sector: { select: { name: true } }, requirement: { select: { buyer: { select: { country: true } } } } },
     }),
-    prisma.seller.findMany({ select: { status: true, district: true, createdAt: true, updatedAt: true, recommendedAt: true, approvedAt: true } }),
+    prisma.seller.findMany({ select: { status: true, district: true, createdAt: true, updatedAt: true, recommendedAt: true, trainedAt: true, approvedAt: true } }),
   ]);
   const target = targets.sellersPerBuyer;
 
@@ -132,9 +132,10 @@ export async function buildInsights(user: User) {
     ageRow("Buyer sectors awaiting FIEO", nonDraftItems.filter((i) => i.status === "SUBMITTED").map((i) => i.submittedAt ?? i.updatedAt), "requirements?item=SUBMITTED"),
     ageRow("Buyer sectors awaiting Directorate", nonDraftItems.filter((i) => i.status === "FIEO_RECOMMENDED").map((i) => i.recommendedAt ?? i.updatedAt), "requirements?item=FIEO_RECOMMENDED"),
     ageRow("Buyer sectors returned (with buyer / FIEO)", nonDraftItems.filter((i) => i.status === "FIEO_RETURNED" || i.status === "DIC_RETURNED").map((i) => i.updatedAt), "requirements?item=pending"),
-    ageRow("Sellers with district centres", sellers.filter((s) => s.status === "WITH_DISTRICT" || s.status === "RETURNED").map((s) => s.updatedAt), "sellers?status=WITH_DISTRICT"),
+    ageRow("Sellers with taluk offices", sellers.filter((s) => s.status === "WITH_TALUK" || s.status === "RETURNED").map((s) => s.updatedAt), "sellers?status=WITH_TALUK"),
     ageRow("Sellers with applicants for correction", sellers.filter((s) => s.status === "WITH_SELLER").map((s) => s.updatedAt), "sellers?status=WITH_SELLER"),
-    ageRow("Sellers awaiting Directorate", sellers.filter((s) => s.status === "RECOMMENDED").map((s) => s.recommendedAt ?? s.updatedAt), "sellers?status=RECOMMENDED"),
+    ageRow("Sellers awaiting initial approval", sellers.filter((s) => s.status === "RECOMMENDED").map((s) => s.recommendedAt ?? s.updatedAt), "sellers?status=RECOMMENDED"),
+    ageRow("Sellers awaiting final approval", sellers.filter((s) => s.status === "TRAINED").map((s) => s.trainedAt ?? s.updatedAt), "sellers?status=TRAINED"),
   ];
 
   const pendingItems = nonDraftItems.filter((i) => ITEM_PENDING.includes(i.status)).length;

@@ -18,6 +18,7 @@ import { AGE_BUCKETS, buildInsights } from "@/lib/insights";
 import { buildDecisionView } from "@/lib/decision";
 import { buyerPrimarySectors, fmtDay, fmtTime, getEventConfig, LIVE_META, liveStatus, unscheduledPairs, type Live } from "@/lib/event";
 import { sellerProfileStats } from "@/lib/seller-profile-stats";
+import { fmtSlot } from "@/lib/training";
 import { fmtMonth, getMouRate, MOU_STATUS, mouStage, mouWhere, toMoney, type MouFilters } from "@/lib/mou";
 import { buyerNeeds, coverage, fit, getMatchState, loadPool, matchChecks, preferenceOutcomes, sellerOffers, SOURCE_LABEL, whyMatched } from "@/lib/matchmaking";
 
@@ -45,6 +46,14 @@ export const REPORTS = {
   "seller-district-summary": {
     title: "District-wise Seller Summary",
     description: "Seller registrations and approvals by district, against the targets set by the Directorate.",
+  },
+  "seller-taluk-summary": {
+    title: "Taluk-wise Seller Summary",
+    description: "Seller registrations at every stage — taluk verification, recommendation, initial approval, awareness session, final approval — taluk by taluk.",
+  },
+  "awareness-attendance": {
+    title: "Awareness Session Attendance",
+    description: "Awareness sessions with date, time and venue; every seller placed in each session with attendance; sellers awaiting a session; sellers absent; and sellers given final approval without a session.",
   },
   "seller-profile-analysis": {
     title: "Seller Profile Analysis",
@@ -107,9 +116,11 @@ export const REPORTS = {
 export type ReportId = keyof typeof REPORTS;
 /** Reports a role may open (district offices: seller reports only). */
 export const reportsFor = (role: User["role"]): ReportId[] =>
-  role === "DISTRICT" ? ["approved-sellers", "seller-register", "seller-district-summary", "seller-profile-analysis", "match-list"] as ReportId[]
+  role === "DISTRICT" ? ["approved-sellers", "seller-register", "seller-district-summary", "seller-taluk-summary", "awareness-attendance", "seller-profile-analysis", "match-list"] as ReportId[]
+  : role === "TALUK" ? ["approved-sellers", "seller-register", "seller-taluk-summary", "awareness-attendance"] as ReportId[]
+  : role === "TRAINING" ? ["awareness-attendance"] as ReportId[]
   // Promoter details (gender, social category…) are internal to the Directorate and districts.
-  : role === "FIEO" ? (Object.keys(REPORTS) as ReportId[]).filter((id) => !["insights", "seller-preferences", "match-coverage", "match-checks", "match-buyer-directory", "seller-profile-analysis"].includes(id))
+  : role === "FIEO" ? (Object.keys(REPORTS) as ReportId[]).filter((id) => !["seller-taluk-summary", "awareness-attendance", "insights", "seller-preferences", "match-coverage", "match-checks", "match-buyer-directory", "seller-profile-analysis"].includes(id))
   : role === "DIC" || role === "ADMIN" ? (Object.keys(REPORTS) as ReportId[])
   : [];
 export const isReportId = (s: string): s is ReportId => s in REPORTS;
@@ -580,6 +591,8 @@ export async function buildReport(id: ReportId, user: User, f: BuyerFilters & Se
     case "seller-register": return sellerRegister(user, f);
     case "sector-demand": return sectorDemandReport(user, f);
     case "seller-district-summary": return sellerDistrictSummary(user);
+    case "seller-taluk-summary": return sellerTalukSummary(user, f);
+    case "awareness-attendance": return awarenessReport(user, (f as { batchId?: string }).batchId);
     case "buyer-register": return buyerRegister(user, f);
     case "sector-requirements": return sectorRequirements(user, f);
     case "approved-buyers": return approvedBuyers(user, f);
@@ -786,7 +799,7 @@ async function sellerRegister(user: User, f: SellerFilters): Promise<Report> {
     kpis: [
       { label: "Sellers", value: sellers.length, tone: "blue" },
       { label: "Approved", value: n(["APPROVED"]), tone: "green" },
-      { label: "Awaiting approval", value: n(["WITH_DISTRICT", "WITH_SELLER", "RECOMMENDED", "RETURNED"]), tone: "yellow" },
+      { label: "In approval", value: n(["WITH_TALUK", "WITH_SELLER", "RECOMMENDED", "RETURNED", "INITIAL_APPROVED", "TRAINED"]), tone: "yellow" },
       { label: "With export experience", value: sellers.filter((x) => x.exportExperience).length, tone: "violet" },
     ],
     tables: [{
@@ -836,7 +849,8 @@ async function sellerDistrictSummary(user: User): Promise<Report> {
     const c = (...st: SellerStatus[]) => ds.filter((x) => st.includes(x.status)).length;
     const approved = c("APPROVED");
     return {
-      district: d, total: ds.length, pending: c("WITH_DISTRICT", "WITH_SELLER", "RETURNED"), recommended: c("RECOMMENDED"),
+      district: d, total: ds.length, pending: c("WITH_TALUK", "WITH_SELLER", "RETURNED"), recommended: c("RECOMMENDED"),
+      notRecommended: c("NOT_RECOMMENDED"), training: c("INITIAL_APPROVED"), trained: c("TRAINED"),
       approved, rejected: c("REJECTED"), exp: ds.filter((x) => x.exportExperience).length, target: targets.district[d] ?? 0,
       profilePending: ds.filter((x) => x.status === "APPROVED" && !x.profileCompletedAt).length,
       achieved: targets.district[d] ? approved / targets.district[d] : null,
@@ -861,8 +875,11 @@ async function sellerDistrictSummary(user: User): Promise<Report> {
         { key: "district", header: "District", width: 22 },
         ...(fieo ? [] : [
           { key: "total", header: "Registered", width: 11, kind: "number" as const, align: "right" as const },
-          { key: "pending", header: "With District / Applicant", width: 13, kind: "number" as const, align: "right" as const },
-          { key: "recommended", header: "With Directorate", width: 13, kind: "number" as const, align: "right" as const },
+          { key: "pending", header: "With Taluk / Applicant", width: 12, kind: "number" as const, align: "right" as const },
+          { key: "notRecommended", header: "Not Recom-mended", width: 10, kind: "number" as const, align: "right" as const },
+          { key: "recommended", header: "Awaiting Initial Approval", width: 12, kind: "number" as const, align: "right" as const },
+          { key: "training", header: "Awareness Session", width: 11, kind: "number" as const, align: "right" as const },
+          { key: "trained", header: "Awaiting Final Approval", width: 11, kind: "number" as const, align: "right" as const },
         ]),
         { key: "approved", header: "Approved", width: 11, kind: "number", align: "right" },
         ...(fieo ? [] : [{ key: "rejected", header: "Rejected", width: 10, kind: "number" as const, align: "right" as const }]),
@@ -877,11 +894,151 @@ async function sellerDistrictSummary(user: User): Promise<Report> {
       rows,
       totals: {
         district: "Total", total: sum("total"), pending: sum("pending"), recommended: sum("recommended"), approved: totalApproved,
+        notRecommended: sum("notRecommended"), training: sum("training"), trained: sum("trained"),
         rejected: sum("rejected"), exp: sum("exp"), profilePending: sum("profilePending"),
         target: user.role === "DISTRICT" ? targets.district[user.district ?? ""] ?? 0 : targets.sellers,
         achieved: (user.role === "DISTRICT" ? targets.district[user.district ?? ""] : targets.sellers) ? totalApproved / (user.role === "DISTRICT" ? targets.district[user.district ?? ""] : targets.sellers) : null,
       },
     }],
+  };
+}
+
+async function sellerTalukSummary(user: User, f: SellerFilters): Promise<Report> {
+  const district = user.role === "DISTRICT" || user.role === "TALUK" ? user.district ?? "" : f.district && DISTRICT_NAMES.includes(f.district) ? f.district : null;
+  const sellers = await prisma.seller.findMany({
+    where: { AND: [sellerScope(user), district ? { district } : {}] },
+    select: { district: true, taluk: true, status: true, recommendedAt: true, initialApprovedAt: true, trainedAt: true, bypassed: true,
+      batches: { select: { attendance: true } } },
+  });
+  const keys = [...new Set(sellers.map((x) => `${x.district}|${x.taluk}`))].sort();
+  const rows: Row[] = keys.map((k) => {
+    const [d, t] = k.split("|");
+    const ts = sellers.filter((x) => x.district === d && x.taluk === t);
+    const c = (...st: SellerStatus[]) => ts.filter((x) => st.includes(x.status)).length;
+    return {
+      district: d, taluk: t, total: ts.length, withTaluk: c("WITH_TALUK", "RETURNED"), withSeller: c("WITH_SELLER"),
+      recommended: ts.filter((x) => x.recommendedAt).length, notRecommended: c("NOT_RECOMMENDED"), awaitingInitial: c("RECOMMENDED"),
+      initial: ts.filter((x) => x.initialApprovedAt).length,
+      awaitingSession: ts.filter((x) => x.status === "INITIAL_APPROVED" && !x.batches.some((b) => b.attendance === "PENDING")).length,
+      scheduled: ts.filter((x) => x.status === "INITIAL_APPROVED" && x.batches.some((b) => b.attendance === "PENDING")).length,
+      attended: ts.filter((x) => x.trainedAt).length, absent: ts.filter((x) => x.batches.some((b) => b.attendance === "ABSENT")).length,
+      awaitingFinal: c("TRAINED"), approved: c("APPROVED"), bypassed: ts.filter((x) => x.bypassed).length, rejected: c("REJECTED"),
+    };
+  });
+  const NUM = ["total", "withTaluk", "withSeller", "recommended", "notRecommended", "awaitingInitial", "initial", "awaitingSession", "scheduled", "attended", "absent", "awaitingFinal", "approved", "bypassed", "rejected"];
+  const totals: Row = { district: "Total", taluk: "" };
+  for (const k of NUM) totals[k] = rows.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const H: Record<string, string> = {
+    total: "Registered", withTaluk: "With Taluk", withSeller: "With Applicant", recommended: "Recom-mended", notRecommended: "Not Recom-mended",
+    awaitingInitial: "Awaiting Initial Approval", initial: "Initially Approved", awaitingSession: "Awaiting Session", scheduled: "Session Scheduled",
+    attended: "Attended", absent: "Absent (ever)", awaitingFinal: "Awaiting Final Approval", approved: "Approved", bypassed: "Approved w/o Session", rejected: "Rejected",
+  };
+  return {
+    ...base("seller-taluk-summary", user, [user.role === "TALUK" ? `Taluk: ${user.taluk}, ${user.district}` : district ? `District: ${district}` : "All districts"]),
+    kpis: [
+      { label: "Registered", value: Number(totals.total), tone: "blue" },
+      { label: "Recommended by taluk", value: Number(totals.recommended), tone: "violet" },
+      { label: "Not recommended", value: Number(totals.notRecommended), tone: "slate" },
+      { label: "Session attended", value: Number(totals.attended), tone: "yellow" },
+      { label: "Approved", value: Number(totals.approved), tone: "green" },
+    ],
+    tables: [{
+      name: "Taluk-wise",
+      columns: [
+        { key: "district", header: "District", width: 14 }, { key: "taluk", header: "Taluk", width: 16 },
+        ...NUM.map((k) => ({ key: k, header: H[k], width: 9, kind: "number" as const, align: "right" as const })),
+      ],
+      rows, totals,
+    }],
+  };
+}
+
+async function awarenessReport(user: User, batchId?: string): Promise<Report> {
+  const local = user.role === "DISTRICT" || user.role === "TALUK";
+  const memberWhere = local ? { seller: sellerScope(user) } : {};
+  const batches = await prisma.trainingBatch.findMany({
+    where: { ...(batchId ? { id: batchId } : {}), ...(user.role === "DISTRICT" || user.role === "TALUK" ? { OR: [{ district: user.district }, { district: null }] } : {}) },
+    orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    include: { members: { where: memberWhere, orderBy: { assignedAt: "asc" }, include: { seller: true } } },
+  });
+  const markers = new Map((await prisma.user.findMany({
+    where: { id: { in: [...new Set(batches.flatMap((b) => b.members.map((m) => m.markedById).filter((x): x is string => !!x)))] } }, select: { id: true, displayName: true },
+  })).map((u) => [u.id, u.displayName]));
+  const one = batchId ? batches[0] : null;
+  const slot = (b: { date: string; startTime: string; endTime: string }) => `${fmtDay(b.date)}, ${fmtSlot(b.startTime, b.endTime)}`;
+  const ATT = { PENDING: "Not marked", PRESENT: "Present", ABSENT: "Absent" } as const;
+  const memberRows: Row[] = batches.flatMap((b) => b.members.map((m) => ({
+    batch: b.name, when: slot(b), venue: b.venue, regNo: m.seller.regNo, name: m.seller.name, district: m.seller.district, taluk: m.seller.taluk,
+    contact: m.seller.contactName, mobile: fmtMobile(m.seller.contactMobile), email: m.seller.contactEmail,
+    attendance: ATT[m.attendance], markedAt: m.markedAt, markedBy: m.markedById ? markers.get(m.markedById) ?? "" : "", status: m.seller.status,
+  })));
+  const sessionRows: Row[] = batches.map((b) => {
+    const n = (a: string) => b.members.filter((m) => m.attendance === a).length;
+    return { batch: b.name, when: slot(b), venue: b.venue, district: b.district ?? "All districts", placed: b.members.length, present: n("PRESENT"), absent: n("ABSENT"), pending: n("PENDING") };
+  });
+  const sellerCols: Column[] = [
+    { key: "regNo", header: "Reg. No.", width: 14, kind: "mono" }, { key: "name", header: "Seller", width: 26 },
+    { key: "district", header: "District", width: 13 }, { key: "taluk", header: "Taluk", width: 14 },
+    { key: "contact", header: "Promoter", width: 18 }, { key: "mobile", header: "Mobile", width: 13 },
+  ];
+  const tables: Table[] = [];
+  if (!one) {
+    tables.push({
+      name: "Sessions", columns: [
+        { key: "batch", header: "Session", width: 30 }, { key: "when", header: "Date & Time", width: 26 }, { key: "venue", header: "Venue", width: 26 },
+        { key: "district", header: "District", width: 14 }, { key: "placed", header: "Sellers", width: 9, kind: "number", align: "right" },
+        { key: "present", header: "Present", width: 9, kind: "number", align: "right" }, { key: "absent", header: "Absent", width: 9, kind: "number", align: "right" },
+        { key: "pending", header: "Not Marked", width: 9, kind: "number", align: "right" },
+      ], rows: sessionRows,
+      totals: { batch: "Total", placed: sessionRows.reduce((a, r) => a + Number(r.placed), 0), present: sessionRows.reduce((a, r) => a + Number(r.present), 0),
+        absent: sessionRows.reduce((a, r) => a + Number(r.absent), 0), pending: sessionRows.reduce((a, r) => a + Number(r.pending), 0) },
+    });
+  }
+  tables.push({
+    name: one ? "Attendance" : "Session-wise attendance", columns: [
+      ...(one ? [] : [{ key: "batch", header: "Session", width: 28 }]),
+      ...sellerCols,
+      { key: "email", header: "E-mail", width: 22, excelOnly: true },
+      { key: "attendance", header: "Attendance", width: 11 }, { key: "markedAt", header: "Marked On", width: 15, kind: "datetime", excelOnly: true },
+      { key: "markedBy", header: "Marked By", width: 16, excelOnly: true }, { key: "status", header: "Stage", width: 16, kind: "sellerStatus" },
+    ], rows: memberRows,
+  });
+  if (!one && user.role !== "TRAINING") {
+    const scope = sellerScope(user);
+    const [waiting, bypassed] = await Promise.all([
+      prisma.seller.findMany({ where: { AND: [scope, { status: "INITIAL_APPROVED", batches: { none: { attendance: "PENDING" } } }] }, orderBy: [{ district: "asc" }, { taluk: "asc" }, { name: "asc" }],
+        include: { batches: { where: { attendance: "ABSENT" }, include: { batch: { select: { name: true } } } } } }),
+      prisma.seller.findMany({ where: { AND: [scope, { bypassed: true }] }, orderBy: { approvedAt: "asc" },
+        include: { logs: { where: { action: "BYPASSED" }, take: 1, orderBy: { createdAt: "desc" } } } }),
+    ]);
+    tables.push({
+      name: "Awaiting a session", heading: "Initially approved — awaiting a session (incl. absent)", columns: [...sellerCols,
+        { key: "initialAt", header: "Initially Approved", width: 15, kind: "date" }, { key: "absent", header: "Absent From", width: 28 }],
+      rows: waiting.map((x) => ({ regNo: x.regNo, name: x.name, district: x.district, taluk: x.taluk, contact: x.contactName, mobile: fmtMobile(x.contactMobile),
+        initialAt: x.initialApprovedAt, absent: x.batches.map((b) => b.batch.name).join("; ") })),
+    });
+    tables.push({
+      name: "Approved without session", heading: "Final approval without the awareness session (Directorate, case by case)", columns: [...sellerCols,
+        { key: "approvedNo", header: "Seller No.", width: 18, kind: "mono" }, { key: "approvedAt", header: "Approved On", width: 15, kind: "date" },
+        { key: "reason", header: "Reason", width: 30 }],
+      rows: bypassed.map((x) => ({ regNo: x.regNo, name: x.name, district: x.district, taluk: x.taluk, contact: x.contactName, mobile: fmtMobile(x.contactMobile),
+        approvedNo: x.approvedNo, approvedAt: x.approvedAt, reason: x.logs[0]?.comment ?? "" })),
+    });
+  }
+  const count = (a: string) => memberRows.filter((r) => r.attendance === a).length;
+  return {
+    ...base("awareness-attendance", user, [
+      ...(one ? [`Session: ${one.name}`, `Date & time: ${slot(one)}`, `Venue: ${one.venue}`] : []),
+      ...(user.role === "TALUK" ? [`Taluk: ${user.taluk}`] : user.role === "DISTRICT" ? [`District: ${user.district}`] : []),
+    ]),
+    kpis: [
+      ...(one ? [] : [{ label: "Sessions", value: batches.length, tone: "blue" as const }]),
+      { label: "Sellers placed", value: memberRows.length, tone: "violet" },
+      { label: "Present", value: count("Present"), tone: "green" },
+      { label: "Absent", value: count("Absent"), tone: "red" },
+      { label: "Not marked", value: count("Not marked"), tone: "slate" },
+    ],
+    tables,
   };
 }
 

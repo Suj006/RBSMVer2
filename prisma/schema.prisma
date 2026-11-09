@@ -18,6 +18,8 @@ enum Role {
   DISTRICT // District Industries Centre — one login per district
   SELLER // MSME seller, login allotted on Directorate approval
   NODAL // Directorate nodal officer for a group of buyers on the event days
+  TALUK // Taluk industries office — one login per taluk; verifies its sellers
+  TRAINING // Training admin: awareness session attendance
 }
 
 // Buyer registration stage. Sector requirements are approved one by one
@@ -76,7 +78,8 @@ model User {
   passwordHash       String
   role               Role
   displayName        String
-  district           String? // DISTRICT users: the district they manage
+  district           String? // DISTRICT and TALUK users: the district they manage / belong to
+  taluk              String? // TALUK users: the taluk they verify sellers for
   mustChangePassword Boolean   @default(false)
   isActive           Boolean   @default(true)
   lastLoginAt        DateTime?
@@ -307,12 +310,54 @@ model EmailLog {
 // ---------------------------------------------------------------- sellers (MSMEs)
 
 enum SellerStatus {
-  WITH_DISTRICT // entered by the district office or self-registered; awaiting district recommendation
-  WITH_SELLER // returned by the district to the applicant, who corrects it with the temporary login
-  RECOMMENDED // recommended by the district to the Directorate
-  RETURNED // Directorate returned it to the district with a comment
-  APPROVED // approved by the Directorate — login allotted, visible to FIEO
-  REJECTED // rejected by the district or the Directorate
+  WITH_TALUK // entered by the district office or self-registered; awaiting the taluk office's verification
+  WITH_SELLER // returned by the taluk office to the applicant, who corrects it with the temporary login
+  NOT_RECOMMENDED // the taluk office did not recommend it
+  RECOMMENDED // recommended by the taluk office; awaiting the Directorate's initial approval
+  RETURNED // the Directorate returned it to the taluk office with a comment
+  INITIAL_APPROVED // initially approved by the Directorate; to attend an awareness session
+  TRAINED // attended the awareness session; awaiting the Directorate's final approval
+  APPROVED // final approval: seller number and permanent login; visible to FIEO and matchmaking
+  REJECTED // rejected by the Directorate
+}
+
+enum Attendance {
+  PENDING
+  PRESENT
+  ABSENT
+}
+
+/** An awareness session for initially approved sellers (created by Admin). */
+model TrainingBatch {
+  id          String        @id @default(cuid())
+  seq         Int           @unique
+  name        String // generated: "Batch 03 · Ernakulam · 12 Dec 2026"
+  date        String // YYYY-MM-DD
+  startTime   String // HH:MM
+  endTime     String
+  venue       String
+  district    String? // optional: the district the batch is for
+  createdById String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  members     BatchMember[]
+}
+
+/** A seller assigned to a batch, with the training admin's attendance mark. */
+model BatchMember {
+  id           String        @id @default(cuid())
+  batchId      String
+  batch        TrainingBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sellerId     String
+  seller       Seller        @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  attendance   Attendance    @default(PENDING)
+  assignedById String?
+  assignedAt   DateTime      @default(now())
+  markedById   String?
+  markedAt     DateTime?
+
+  @@unique([batchId, sellerId])
+  @@index([sellerId])
 }
 
 // How a buyer came in: own sign-up, or added by FIEO one at a time or by bulk upload (temporary login until approval).
@@ -344,6 +389,12 @@ enum SellerAction {
   APPROVED
   REJECTED
   PROFILE_UPDATED // approved seller completed / updated the profile
+  NOT_RECOMMENDED // taluk office did not recommend
+  INITIAL_APPROVED // Directorate's initial approval
+  BATCH_ASSIGNED // assigned to (or moved between) awareness sessions
+  ATTENDED // marked present at the awareness session
+  ABSENT // marked absent at the awareness session
+  BYPASSED // final approval granted without attending the session
 }
 
 model Seller {
@@ -384,8 +435,11 @@ model Seller {
   createdById String?
   createdBy   User?        @relation("SellerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
 
-  status        SellerStatus @default(WITH_DISTRICT)
+  status        SellerStatus @default(WITH_TALUK)
   recommendedAt DateTime?
+  initialApprovedAt DateTime?
+  trainedAt     DateTime?
+  bypassed      Boolean       @default(false) // final approval granted by the Directorate without the awareness session
   approvedAt    DateTime?
   approvedSeq   Int?         @unique
   approvedNo    String?      @unique // RBSM-Seller-2026001
@@ -397,6 +451,7 @@ model Seller {
 
   products SellerProduct[]
   logs     SellerLog[]
+  batches  BatchMember[]
 
   conversations Conversation[]
   meetings      Meeting[]

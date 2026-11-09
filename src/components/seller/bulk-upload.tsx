@@ -35,7 +35,8 @@ export function BulkUpload({ district }: { district: string }) {
           {state?.imported && (
             <Alert tone="green" title={`${state.imported.length} seller${state.imported.length === 1 ? "" : "s"} imported`}>
               Registration numbers {state.imported[0]?.regNo} to {state.imported[state.imported.length - 1]?.regNo}.{" "}
-              <Link href="/district/sellers?status=WITH_DISTRICT" className="font-semibold underline">Review and recommend them</Link>
+              Each seller has been e-mailed a temporary login; the taluk offices now verify them.{" "}
+              <Link href="/district/sellers?status=WITH_TALUK" className="font-semibold underline">View them</Link>
               {bad.length > 0 && <> · {bad.length} row{bad.length === 1 ? " was" : "s were"} skipped (listed below).</>}
             </Alert>
           )}

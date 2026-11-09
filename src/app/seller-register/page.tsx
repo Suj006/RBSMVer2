@@ -33,9 +33,9 @@ export default async function Page() {
           <div className="text-xs font-semibold uppercase tracking-wider text-brand-700">Kerala MSMEs</div>
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">Register as a seller for {EVENT.name}</h1>
           <p className="mt-2 max-w-3xl text-slate-600">
-            Meet international buyers at the {EVENT.programme}. Your registration is verified by your District Industries Centre and approved by the
-            Directorate of Industries &amp; Commerce. A login is e-mailed to you right away so you can track your application and make
-            any corrections the district centre asks for; it becomes your permanent seller login once you are approved.
+            Meet international buyers at the {EVENT.programme}. Your registration is verified by your Taluk Industries Office and approved by the
+            Directorate of Industries &amp; Commerce after an awareness session. A login is e-mailed to you right away so you can track your
+            application, make any corrections the taluk office asks for and see your session; it becomes your permanent seller login on final approval.
           </p>
           <p className="mt-2 max-w-3xl text-sm text-slate-500">
             Keep ready: Udyam registration, IEC number (required if you have export experience) and any quality / product certificates.

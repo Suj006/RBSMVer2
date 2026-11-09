@@ -7,16 +7,19 @@ import { sellerScope, sellerWhere } from "@/lib/seller-query";
 import { localBodyLabel } from "@/lib/config";
 import { fmtDateTime } from "@/lib/format";
 import { fmtMobile } from "@/lib/text";
-import { ROLE_LABEL, SELLER_ACTION_LABEL, SELLER_DISTRICT_EDITABLE } from "@/lib/status";
+import { ROLE_LABEL, SELLER_ACTION_LABEL, SELLER_TALUK_EDITABLE } from "@/lib/status";
+import { fmtDay } from "@/lib/event";
+import { canAssign, fmtSlot } from "@/lib/training";
+import Link from "next/link";
 import { Alert, Badge, ButtonLink, Card, CardHeader, DL, PageHeader } from "@/components/ui";
 import { DownloadButtons } from "@/components/staff/download-buttons";
 import { SellerBadge } from "./seller-badge";
 import { ExportCredentials, ProfileDetails } from "./profile-summary";
-import { DIRECTORATE_OPTIONS, DISTRICT_OPTIONS, SellerDecision } from "./seller-decision";
+import { BYPASS_OPTIONS, FINAL_OPTIONS, INITIAL_OPTIONS, SellerDecision, TALUK_OPTIONS } from "./seller-decision";
 import { cn } from "@/lib/cn";
 
 const DONE: Record<string, string> = {
-  registered: "Seller registered. Review the details and recommend to the Directorate when ready.",
+  registered: "Seller registered and a temporary login e-mailed. The taluk office now verifies and recommends the seller.",
   updated: "Details updated.",
   recommended: "Saved and recommended to the Directorate.",
 };
@@ -29,14 +32,18 @@ export async function SellerDetailPage({ user, id, base, done }: { user: User; i
       logs: { orderBy: { createdAt: "desc" }, include: { actor: { select: { displayName: true } } } },
       user: { select: { username: true, lastLoginAt: true } },
       createdBy: { select: { displayName: true } },
+      batches: { orderBy: { assignedAt: "desc" }, include: { batch: true } },
     },
   });
   if (!s) notFound();
   const lastReturn = s.logs.find((l) => l.action === "RETURNED");
   const lastSentBack = s.logs.find((l) => l.action === "SENT_TO_SELLER");
-  const districtCan = user.role === "DISTRICT" && SELLER_DISTRICT_EDITABLE.includes(s.status);
-  const dicCan = user.role === "DIC" && s.status === "RECOMMENDED";
-  const next = user.role === "DISTRICT" || user.role === "DIC"
+  const editable = (user.role === "DISTRICT" || user.role === "TALUK") && SELLER_TALUK_EDITABLE.includes(s.status);
+  const talukCan = user.role === "TALUK" && SELLER_TALUK_EDITABLE.includes(s.status);
+  const dicStage = user.role !== "DIC" ? null : s.status === "RECOMMENDED" ? "initial" : s.status === "TRAINED" ? "final" : s.status === "INITIAL_APPROVED" ? "bypass" : null;
+  const absent = s.batches.some((m) => m.attendance === "ABSENT");
+  const pendingSession = s.batches.find((m) => m.attendance === "PENDING");
+  const next = user.role === "TALUK" || user.role === "DIC"
     ? await prisma.seller.findFirst({ where: { AND: [sellerWhere(user, { status: "action" }), { id: { not: s.id } }] }, orderBy: { updatedAt: "asc" }, select: { id: true } })
     : null;
   const nav = { next: next ? `${base}/${next.id}` : null, list: `${base}?status=action`, listLabel: "Needs my action" };
@@ -65,7 +72,7 @@ export async function SellerDetailPage({ user, id, base, done }: { user: User; i
         <div className="min-w-0 space-y-6">
           <Card>
             <CardHeader title="Enterprise details"
-              action={districtCan ? <ButtonLink href={`${base}/${s.id}/edit`} variant="secondary" className="px-3 py-2"><Pencil className="size-4" /> Edit</ButtonLink> : undefined} />
+              action={editable ? <ButtonLink href={`${base}/${s.id}/edit`} variant="secondary" className="px-3 py-2"><Pencil className="size-4" /> Edit</ButtonLink> : undefined} />
             <div className="p-6">
               <DL cols={3} items={[
                 { label: "Name of the seller", value: s.name },
@@ -114,11 +121,13 @@ export async function SellerDetailPage({ user, id, base, done }: { user: User; i
             <CardHeader title="Registration" />
             <div className="p-6">
               <DL cols={3} items={[
-                { label: "Source", value: s.source === "SELF" ? "Self-registered on the portal" : s.source === "BULK" ? "Bulk upload by district centre" : "Entered by district centre" },
+                { label: "Source", value: s.source === "SELF" ? "Self-registered on the portal" : s.source === "BULK" ? "Bulk upload by district office" : "Entered by district office" },
                 { label: "Registered on", value: fmtDateTime(s.createdAt) },
                 { label: "Recommended on", value: fmtDateTime(s.recommendedAt) },
-                { label: "Approved on", value: fmtDateTime(s.approvedAt) },
-                { label: "Login", value: s.user ? <><span className="font-mono">{s.user.username}</span>{s.status !== "APPROVED" && <span className="text-slate-500"> (applicant — status and corrections only)</span>}</> : "Allotted on approval" },
+                { label: "Initially approved on", value: fmtDateTime(s.initialApprovedAt) },
+                { label: "Session attended on", value: fmtDateTime(s.trainedAt) },
+                { label: "Final approval on", value: s.approvedAt ? <>{fmtDateTime(s.approvedAt)}{s.bypassed && <Badge tone="violet" className="ml-2">Without session</Badge>}</> : "—" },
+                { label: "Login", value: s.user ? <><span className="font-mono">{s.user.username}</span>{s.status !== "APPROVED" && <span className="text-slate-500"> (temporary — until final approval)</span>}</> : "Allotted on approval" },
                 { label: "Last login", value: s.user ? fmtDateTime(s.user.lastLoginAt) : "—" },
               ]} />
             </div>
@@ -126,17 +135,42 @@ export async function SellerDetailPage({ user, id, base, done }: { user: User; i
         </div>
 
         <div className="space-y-6">
-          {(user.role === "DISTRICT" || user.role === "DIC") && (
-            <Card className={cn("no-print p-5", (districtCan || dicCan) && "border-brand-200 ring-2 ring-brand-100")}>
-              {districtCan ? (
-                <SellerDecision sellerId={s.id} options={DISTRICT_OPTIONS} nav={nav}
-                  heading={s.status === "RETURNED" ? "Correct and recommend again" : "Recommend to Directorate"}
-                  note="Verify the Udyam number, IEC number, certifications and promoter details before recommending." />
-              ) : dicCan ? (
-                <SellerDecision sellerId={s.id} options={DIRECTORATE_OPTIONS} nav={nav} heading="Directorate decision"
-                  note="Approving adds the seller to the RBSM seller list and e-mails a login to the promoter." />
+          {(user.role === "TALUK" || user.role === "DIC") && (
+            <Card className={cn("no-print p-5", (talukCan || dicStage) && "border-brand-200 ring-2 ring-brand-100")}>
+              {talukCan ? (
+                <SellerDecision sellerId={s.id} options={TALUK_OPTIONS} nav={nav}
+                  heading={s.status === "RETURNED" ? "Correct and recommend again" : "Taluk verification"}
+                  note="Verify the Udyam number, IEC number, certifications and promoter details. Use Edit to correct the details yourself." />
+              ) : dicStage === "initial" ? (
+                <SellerDecision sellerId={s.id} options={INITIAL_OPTIONS} nav={nav} heading="Initial approval"
+                  note="Initially approved sellers are placed in an awareness session. Final approval and the permanent login follow attendance." />
+              ) : dicStage === "final" ? (
+                <SellerDecision sellerId={s.id} options={FINAL_OPTIONS} nav={nav} heading="Final approval"
+                  note="The seller attended the awareness session. Final approval allots the seller number and the permanent login." />
+              ) : dicStage === "bypass" ? (
+                <SellerDecision sellerId={s.id} options={BYPASS_OPTIONS} nav={nav} heading={absent ? "Absent from the awareness session" : "Awaiting the awareness session"}
+                  note={`${absent ? "The seller can be placed in another session, or" : "Case by case, the seller can"} be given final approval without attending. A comment giving the reason is required.`} />
               ) : (
                 <SellerDecision sellerId={s.id} options={[]} heading="No action pending" note="This seller is not at a stage that needs your decision." />
+              )}
+            </Card>
+          )}
+          {(s.batches.length > 0 || s.status === "INITIAL_APPROVED") && (
+            <Card>
+              <CardHeader title="Awareness session" subtitle={s.status === "INITIAL_APPROVED" && !pendingSession ? "Not yet placed in a session." : undefined}
+                action={s.status === "INITIAL_APPROVED" && canAssign(user.role) ? <Link href={base.replace(/\/sellers$/, "/batches")} className="text-sm font-semibold text-brand-700 hover:underline">{pendingSession ? "Move" : "Place in a session"} →</Link> : undefined} />
+              {s.batches.length > 0 && (
+                <ul className="divide-y divide-slate-100">
+                  {s.batches.map((m) => (
+                    <li key={m.id} className="px-5 py-3 text-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-ink">{m.batch.name}</span>
+                        <Badge tone={m.attendance === "PRESENT" ? "green" : m.attendance === "ABSENT" ? "red" : "blue"}>{m.attendance === "PRESENT" ? "Present" : m.attendance === "ABSENT" ? "Absent" : "Scheduled"}</Badge>
+                      </div>
+                      <div className="mt-0.5 text-xs text-slate-500">{fmtDay(m.batch.date)}, {fmtSlot(m.batch.startTime, m.batch.endTime)} · {m.batch.venue}</div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card>
           )}
@@ -146,7 +180,7 @@ export async function SellerDetailPage({ user, id, base, done }: { user: User; i
               {s.logs.map((l) => (
                 <li key={l.id} className="relative">
                   <span className={cn("absolute -left-[26px] top-1 size-3 rounded-full ring-4 ring-white",
-                    l.action === "APPROVED" ? "bg-tx-green" : l.action === "RETURNED" || l.action === "REJECTED" ? "bg-tx-red" : l.action === "RECOMMENDED" ? "bg-violet-500" : "bg-tx-blue")} />
+                    l.action === "APPROVED" || l.action === "BYPASSED" || l.action === "ATTENDED" ? "bg-tx-green" : l.action === "RETURNED" || l.action === "REJECTED" || l.action === "ABSENT" || l.action === "NOT_RECOMMENDED" ? "bg-tx-red" : l.action === "RECOMMENDED" || l.action === "INITIAL_APPROVED" ? "bg-violet-500" : "bg-tx-blue")} />
                   <div className="text-sm font-semibold text-ink">{SELLER_ACTION_LABEL[l.action]}</div>
                   <div className="text-xs text-slate-500">
                     {l.actorRole ? `${ROLE_LABEL[l.actorRole]}${l.actor ? ` · ${l.actor.displayName}` : ""}` : "Seller"} · {fmtDateTime(l.createdAt)}

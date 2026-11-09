@@ -12,6 +12,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:normalize": "tsx scripts/normalize-text.ts",
     "db:demo": "tsx scripts/demo-data.ts",
+    "db:clear-sellers": "tsx scripts/clear-sellers.ts",
     "db:event-today": "tsx scripts/event-today.ts",
     "db:studio": "prisma studio"
   },

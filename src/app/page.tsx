@@ -34,14 +34,14 @@ const BUYER_STEPS = [
 ];
 const SELLER_STEPS = [
   { icon: Store, title: "Register your enterprise", body: "Self-register online and get a login to track your application — or register through your District Industries Centre." },
-  { icon: Landmark, title: "Verified by your district centre", body: "Udyam number, IEC, certifications and contact details are checked locally. If anything needs correcting, you fix it yourself online." },
-  { icon: BadgeCheck, title: "Approved by the Directorate", body: "You receive your RBSM seller number; your login becomes your permanent seller login, where you complete your seller profile." },
+  { icon: Landmark, title: "Verified by your taluk office", body: "The Taluk Industries Office checks the Udyam number, IEC, certifications and contact details and recommends you. If anything needs correcting, you fix it yourself online." },
+  { icon: BadgeCheck, title: "Awareness session, then approval", body: "After the Directorate's initial approval you attend an awareness session; final approval brings your RBSM seller number and permanent login." },
   { icon: Handshake, title: "Choose buyers, then meet them", body: "See approved buyers' requirements, name up to five preferred buyers, and get your published meeting list." },
 ];
 const MODULES = [
   { icon: Users, title: "Buyer registration & profiling", body: "Structured buyer profiles with sourcing value, timelines and sector-wise requirements.", tone: "bg-tx-blue", live: true },
   { icon: Store, title: "MSME seller registry", body: "Sellers from all 14 districts — individual entry, Excel bulk upload or self-registration.", tone: "bg-tx-green", live: true },
-  { icon: ShieldCheck, title: "Two-level verification", body: "FIEO and the Directorate approve buyers sector by sector; district centres verify sellers.", tone: "bg-tx-yellow", live: true },
+  { icon: ShieldCheck, title: "Two-level verification", body: "FIEO and the Directorate approve buyers sector by sector; taluk offices verify and the Directorate approves sellers.", tone: "bg-tx-yellow", live: true },
   { icon: BarChart3, title: "Sector demand intelligence", body: "Which products buyers want in every sector — and which approved sellers offer them.", tone: "bg-tx-red", live: true },
   { icon: Handshake, title: "Buyer–seller matchmaking", body: "Sellers state their preferred buyers; the Directorate maps each buyer to ten relevant sellers using preferences and sector–product fit.", tone: "bg-tx-green", live: true },
   { icon: CalendarClock, title: "B2B meetings & follow-up", body: "One-to-one meeting schedules during the event, then leads, MoUs and outcomes.", tone: "bg-tx-blue", live: false },
@@ -49,15 +49,16 @@ const MODULES = [
 const OFFICIAL = [
   { title: "Directorate of Industries & Commerce", body: "Final approvals, targets and programme MIS", icon: Landmark },
   { title: "FIEO", body: "Buyer verification and recommendations", icon: Globe2 },
-  { title: "District Industries Centres", body: "Seller registration and recommendation — 14 districts", icon: MapPin },
+  { title: "District & Taluk Industries Offices", body: "Seller registration, verification and awareness sessions — 14 districts, 78 taluks", icon: MapPin },
   { title: "Portal administration", body: "Sector and certification masters, users", icon: KeyRound },
 ];
 const FAQ = [
   { q: "Who can register as a buyer?", a: "International importers, distributors, retailers and sourcing companies looking to buy from Indian MSMEs. Registration is free; FIEO verifies every buyer before the Directorate approves them." },
   { q: "Who can register as a seller?", a: "MSMEs located in Kerala with a valid Udyam registration (UDYAM-KL-…). You can register online yourself or through your District Industries Centre." },
   { q: "How are buyers and sellers matched?", a: "On the sectors and products each buyer needs and each seller is ready to export, the certifications buyers ask for, and sellers' own preferences. The aim is for every buyer to meet at least ten relevant sellers." },
-  { q: "I registered but have not received my login.", a: "Buyers receive their login immediately after sign-up — please check your spam folder. Sellers who register online also receive a login immediately, to track the application and make corrections; it becomes the permanent seller login on approval." },
-  { q: "My district centre asked for a correction. What do I do?", a: "Sign in with the login e-mailed to you, correct the details shown on your application page and click \u201cSave & submit to district centre\u201d. The district centre's comment is shown at the top of the page." },
+  { q: "I registered but have not received my login.", a: "Buyers receive their login immediately after sign-up — please check your spam folder. Sellers who register online also receive a login immediately, to track the application and make corrections; it becomes the permanent seller login on final approval." },
+  { q: "My taluk office asked for a correction. What do I do?", a: "Sign in with the login e-mailed to you, correct the details shown on your application page and click \u201cSave & submit to taluk office\u201d. The taluk office's comment is shown at the top of the page." },
+  { q: "What is the awareness session?", a: "After the Directorate's initial approval, every seller attends a short awareness session on the programme. The date, time and venue are e-mailed and shown on your application page. Final approval and the permanent login follow attendance." },
   { q: "Can I change my requirement after approval?", a: "Yes. Approved buyers can modify a sector or add new sectors at any time; the change goes through the same verification." },
 ];
 
@@ -201,7 +202,7 @@ export default async function Home() {
               {([
                 [Target, `${stats.targets.buyers} international buyers and ${stats.targets.sellers} Kerala MSMEs`],
                 [Handshake, `At least ${stats.targets.sellersPerBuyer} pre-matched one-to-one meetings for every buyer`],
-                [ShieldCheck, "Verification by FIEO, district centres and the Directorate"],
+                [ShieldCheck, "Verification by FIEO, taluk offices and the Directorate"],
                 [FileSpreadsheet, "Live dashboards and downloadable reports for every stakeholder"],
               ] as [LucideIcon, string][]).map(([Icon, t]) => (
                 <li key={t} className="flex items-start gap-3">
@@ -282,7 +283,7 @@ export default async function Home() {
             <Eyebrow dark>All of Kerala</Eyebrow>
             <h2 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">14 districts. One export network.</h2>
             <p className="mt-4 text-lg leading-relaxed text-white/70">
-              Every District Industries Centre registers and verifies sellers from its district, so buyers meet enterprises from
+              District Industries Centres and Taluk Industries Offices register and verify sellers across the state, so buyers meet enterprises from
               Kasaragod to Thiruvananthapuram — from coastal seafood processors to high-range spice and tea growers.
             </p>
             <div className="mt-8 grid grid-cols-2 gap-4 sm:max-w-md">

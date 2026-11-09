@@ -25,10 +25,11 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ d
     include: {
       products: { orderBy: { sortOrder: "asc" }, include: { sector: true } },
       logs: { orderBy: { createdAt: "desc" } },
+      batches: { orderBy: { assignedAt: "desc" }, include: { batch: true } },
     },
   });
   if (!s) notFound();
-  // Until the Directorate approves, the login is a temporary applicant login: status and corrections only.
+  // Until final approval, the login is a temporary applicant login: status, corrections and the awareness session.
   if (s.status !== "APPROVED") return <ApplicantView seller={s} done={done} />;
   const match = await getMatchState();
   return (

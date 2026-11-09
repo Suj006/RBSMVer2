@@ -1,4 +1,4 @@
-import { ShieldAlert, BarChart3, BadgeCheck, Boxes, ChartPie, ClipboardList, Handshake, Lightbulb, MapPinned, PackageSearch, Star, Store, Users, UsersRound, MessagesSquare, CalendarClock, ClipboardCheck, FileSignature } from "lucide-react";
+import { ShieldAlert, BarChart3, BadgeCheck, Boxes, ChartPie, ClipboardList, Handshake, Lightbulb, MapPinned, PackageSearch, Star, Store, Users, UsersRound, MessagesSquare, CalendarClock, ClipboardCheck, FileSignature, GraduationCap, Map } from "lucide-react";
 import type { User } from "@/generated/prisma/client";
 import type { SellerStatus } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
@@ -13,15 +13,16 @@ import { ProfileFilters } from "@/components/seller/profile-filters";
 
 const ICON: Record<ReportId, typeof Users> = {
   "buyer-register": Users, "sector-requirements": ClipboardList, "approved-buyers": BadgeCheck, "approved-sellers": BadgeCheck,
-  "seller-register": Store, "seller-district-summary": MapPinned, "seller-profile-analysis": UsersRound, "mis-summary": BarChart3, "sector-demand": Boxes,
+  "seller-register": Store, "seller-district-summary": MapPinned, "seller-taluk-summary": Map, "awareness-attendance": GraduationCap, "seller-profile-analysis": UsersRound, "mis-summary": BarChart3, "sector-demand": Boxes,
   "product-demand": PackageSearch, "insights": Lightbulb, "match-list": Handshake, "seller-preferences": Star, "match-coverage": ChartPie, "match-buyer-directory": Users, "match-checks": ShieldAlert, "communications": MessagesSquare, "event-schedule": CalendarClock, "event-attendance": ClipboardCheck, "mou-register": FileSignature,
 };
 const ACCENT: Record<ReportId, string> = {
   "buyer-register": "bg-tx-blue", "sector-requirements": "bg-tx-yellow", "approved-buyers": "bg-tx-green", "approved-sellers": "bg-tx-green",
-  "seller-register": "bg-tx-green", "seller-district-summary": "bg-tx-blue", "seller-profile-analysis": "bg-violet-500", "mis-summary": "bg-tx-red", "sector-demand": "bg-violet-500",
+  "seller-register": "bg-tx-green", "seller-district-summary": "bg-tx-blue", "seller-taluk-summary": "bg-tx-blue", "awareness-attendance": "bg-sky-500", "seller-profile-analysis": "bg-violet-500", "mis-summary": "bg-tx-red", "sector-demand": "bg-violet-500",
   "product-demand": "bg-violet-500", "insights": "bg-ink", "match-list": "bg-tx-green", "seller-preferences": "bg-violet-500", "match-coverage": "bg-tx-red", "match-buyer-directory": "bg-tx-blue", "match-checks": "bg-tx-yellow", "communications": "bg-ink", "event-schedule": "bg-tx-blue", "event-attendance": "bg-tx-green", "mou-register": "bg-tx-green",
 };
-const SELLER_REPORTS: ReportId[] = ["approved-sellers", "seller-register", "seller-district-summary", "seller-profile-analysis"];
+const SELLER_REPORTS: ReportId[] = ["approved-sellers", "seller-register", "seller-district-summary", "seller-taluk-summary", "awareness-attendance", "seller-profile-analysis"];
+const WHOLE: ReportId[] = ["seller-district-summary", "seller-profile-analysis", "awareness-attendance"];
 // In the order of the matchmaking steps.
 const MATCH_REPORTS: ReportId[] = ["match-buyer-directory", "seller-preferences", "match-list", "match-checks", "match-coverage", "event-schedule", "event-attendance", "mou-register", "communications"];
 
@@ -60,7 +61,7 @@ export async function ReportsPage({ user, base, filters }: { user: User; base: s
   const bqs = pick({ q: filters.q, status: filters.status, item: filters.item, country: filters.country, sector: filters.sector });
   const sqs = pick({ status: filters.s_status, district: filters.s_district, sector: filters.s_sector, exp: filters.s_exp,
     profile: filters.s_profile, cat: filters.s_cat, utype: filters.s_utype, promoter: filters.s_promoter, iec: filters.s_iec, cert: filters.s_cert });
-  const sellerStatuses: SellerStatus[] = role === "DISTRICT" || role === "ADMIN" || role === "DIC" ? ALL_SELLER_STATUSES : SELLER_VISIBLE[role] ?? [];
+  const sellerStatuses: SellerStatus[] = ["DISTRICT", "TALUK", "ADMIN", "DIC", "TRAINING"].includes(role) ? ALL_SELLER_STATUSES : SELLER_VISIBLE[role] ?? [];
   const keep = (prefix: "s_" | "b") => Object.entries(filters).filter(([k, v]) => v && (prefix === "s_" ? !k.startsWith("s_") : k.startsWith("s_")));
 
   return (
@@ -123,7 +124,7 @@ export async function ReportsPage({ user, base, filters }: { user: User; base: s
                 <option value="">All seller statuses</option>
                 {sellerStatuses.map((s) => <option key={s} value={s}>{SELLER_META[s].label}</option>)}
               </Select>
-              {role !== "DISTRICT" ? (
+              {role !== "DISTRICT" && role !== "TALUK" ? (
                 <Select name="s_district" defaultValue={filters.s_district ?? ""} aria-label="District">
                   <option value="">All districts</option>
                   {DISTRICT_NAMES.map((d) => <option key={d}>{d}</option>)}
@@ -147,8 +148,10 @@ export async function ReportsPage({ user, base, filters }: { user: User; base: s
           </Card>
           <div className="grid gap-5 md:grid-cols-2">
             {sellerIds.map((id) => (
-              <ReportCard key={id} id={id} href={`/api/reports/${id}${id === "seller-district-summary" || id === "seller-profile-analysis" || !sqs ? "" : `?${sqs}`}`}
-                note={id === "seller-district-summary" || id === "seller-profile-analysis" ? "Covers all sellers you can see (filters not applied)."
+              <ReportCard key={id} id={id}
+                href={`/api/reports/${id}${WHOLE.includes(id) || !sqs ? "" : id === "seller-taluk-summary" ? (filters.s_district ? `?district=${encodeURIComponent(filters.s_district)}` : "") : `?${sqs}`}`}
+                note={WHOLE.includes(id) ? "Covers all sellers you can see (filters not applied)."
+                  : id === "seller-taluk-summary" ? "Uses the District filter only."
                   : id === "approved-sellers" ? "Approved sellers only — the status filter is not applied." : undefined} />
             ))}
           </div>

@@ -24,7 +24,7 @@ export async function buildDecisionView(ins: Insights, root: string) {
     prisma.buyer.findMany({ select: { status: true, basicSubmittedAt: true, basicApprovedAt: true, approvedAt: true, createdAt: true,
       requirement: { select: { items: { select: { status: true } } } } } }),
     prisma.requirementItem.findMany({ where: { status: { not: "DRAFT" } }, select: { id: true, status: true } }),
-    prisma.seller.findMany({ select: { status: true, district: true, createdAt: true, recommendedAt: true, approvedAt: true, updatedAt: true,
+    prisma.seller.findMany({ select: { status: true, district: true, createdAt: true, recommendedAt: true, initialApprovedAt: true, trainedAt: true, approvedAt: true, updatedAt: true,
       logs: { where: { action: { in: ["RETURNED", "SENT_TO_SELLER"] } }, select: { action: true } } } }),
     prisma.reviewLog.findMany({ where: { action: "REQ_RETURNED", itemId: { not: null } }, select: { itemId: true }, distinct: ["itemId"] }),
     prisma.reviewLog.findMany({ where: { action: "DIC_RETURNED", itemId: { not: null } }, select: { itemId: true }, distinct: ["itemId"] }),
@@ -42,7 +42,9 @@ export async function buildDecisionView(ins: Insights, root: string) {
   ];
   const sellerFunnel: FunnelStep[] = [
     { label: "Registered", value: sellers.length, href: `${root}/sellers` },
-    { label: "Recommended by district", value: sellers.filter((s) => s.recommendedAt || ["RECOMMENDED", "RETURNED", "APPROVED"].includes(s.status)).length },
+    { label: "Recommended by taluk", value: sellers.filter((s) => s.recommendedAt || ["RECOMMENDED", "RETURNED", "INITIAL_APPROVED", "TRAINED", "APPROVED"].includes(s.status)).length },
+    { label: "Initially approved", value: sellers.filter((s) => s.initialApprovedAt || ["INITIAL_APPROVED", "TRAINED", "APPROVED"].includes(s.status)).length },
+    { label: "Awareness session attended", value: sellers.filter((s) => s.trainedAt).length },
     { label: "Approved seller", value: sellers.filter((s) => s.status === "APPROVED").length, href: `${root}/sellers?status=APPROVED` },
   ];
 
@@ -73,10 +75,10 @@ export async function buildDecisionView(ins: Insights, root: string) {
     const approved = ds.filter((s) => s.status === "APPROVED").length;
     const target = targets.district[d] ?? 0;
     const rec = ds.filter((s) => s.recommendedAt).map((s) => (s.recommendedAt!.getTime() - s.createdAt.getTime()) / DAY);
-    const waiting = ds.filter((s) => (s.status === "WITH_DISTRICT" || s.status === "RETURNED") && now - s.updatedAt.getTime() > 7 * DAY).length;
+    const waiting = ds.filter((s) => (s.status === "WITH_TALUK" || s.status === "RETURNED") && now - s.updatedAt.getTime() > 7 * DAY).length;
     return {
       district: d, registered: ds.length, approved, target, achieved: target ? approved / target : 0,
-      pendingWithDistrict: ds.filter((s) => s.status === "WITH_DISTRICT" || s.status === "RETURNED").length, waitingOver7: waiting,
+      pendingWithDistrict: ds.filter((s) => s.status === "WITH_TALUK" || s.status === "RETURNED").length, waitingOver7: waiting,
       avgDaysToRecommend: rec.length ? rec.reduce((a, b) => a + b, 0) / rec.length : null,
       rejected: ds.filter((s) => s.status === "REJECTED").length,
     };

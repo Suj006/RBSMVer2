@@ -1,6 +1,6 @@
 import type { Prisma, User } from "@/generated/prisma/client";
 import type { SellerStatus } from "@/generated/prisma/enums";
-import { ALL_SELLER_STATUSES, SELLER_PENDING, SELLER_VISIBLE } from "@/lib/status";
+import { ALL_SELLER_STATUSES, SELLER_ACTION, SELLER_PENDING, SELLER_VISIBLE } from "@/lib/status";
 import { optLabel, UNIT_CATEGORIES, UNIT_TYPES } from "@/lib/config";
 
 /** Plain-language labels of the profile filters (for report headers). */
@@ -21,7 +21,9 @@ export function describeProfileFilters(f: SellerFilters): string[] {
 }
 
 export type SellerFilters = {
-  q?: string; status?: string; sector?: string; district?: string; exp?: string; source?: string; page?: string;
+  q?: string; status?: string; sector?: string; district?: string; taluk?: string; exp?: string; source?: string; page?: string;
+  /** Awareness session: unassigned (initially approved, no session yet) / scheduled / absent / bypassed. */
+  training?: string;
   /** Profile completed by the approved seller: done / pending. */
   profile?: string;
   /** Unit category (MICRO…) and unit type (MANUFACTURING…). */
@@ -33,18 +35,23 @@ export type SellerFilters = {
 };
 
 /** The filter keys that narrow sellers (everything except paging). */
-export const SELLER_FILTER_KEYS = ["q", "status", "sector", "district", "exp", "source", "profile", "cat", "utype", "promoter", "iec", "cert"] as const;
+export const SELLER_FILTER_KEYS = ["q", "status", "sector", "district", "taluk", "training", "exp", "source", "profile", "cat", "utype", "promoter", "iec", "cert"] as const;
 
-/** Sellers a user may see at all. Districts see their own district; FIEO only approved sellers; the Directorate and Admin all. */
-export function sellerScope(user: Pick<User, "role" | "district">): Prisma.SellerWhereInput {
+/**
+ * Sellers a user may see at all. Districts see their own district, taluk offices their own taluk; the training admin
+ * sellers placed in an awareness session; FIEO only finally approved sellers; the Directorate and Admin all.
+ */
+export function sellerScope(user: Pick<User, "role" | "district" | "taluk">): Prisma.SellerWhereInput {
   if (user.role === "DISTRICT") return { district: user.district ?? "__none__" };
+  if (user.role === "TALUK") return { district: user.district ?? "__none__", taluk: user.taluk ?? "__none__" };
+  if (user.role === "TRAINING") return { batches: { some: {} } };
   const visible = SELLER_VISIBLE[user.role];
   if (visible) return { status: { in: visible } };
   if (user.role === "ADMIN" || user.role === "DIC") return {};
   return { id: "__none__" };
 }
 
-export function sellerWhere(user: Pick<User, "role" | "district">, f: SellerFilters): Prisma.SellerWhereInput {
+export function sellerWhere(user: Pick<User, "role" | "district" | "taluk">, f: SellerFilters): Prisma.SellerWhereInput {
   const and: Prisma.SellerWhereInput[] = [sellerScope(user)];
   const q = f.q?.trim();
   if (q) {
@@ -59,7 +66,8 @@ export function sellerWhere(user: Pick<User, "role" | "district">, f: SellerFilt
     });
   }
   if (f.status === "action") {
-    and.push({ status: { in: user.role === "DISTRICT" ? ["WITH_DISTRICT", "RETURNED"] : ["RECOMMENDED"] } });
+    and.push({ status: { in: SELLER_ACTION[user.role] ?? (user.role === "DISTRICT" ? ["INITIAL_APPROVED"] : []) } });
+    if (user.role === "DISTRICT") and.push({ batches: { none: { attendance: "PENDING" } } }); // district: to place in a session
   } else if (f.status === "pending") {
     and.push({ status: { in: SELLER_PENDING } });
   } else if (f.status && ALL_SELLER_STATUSES.includes(f.status as SellerStatus)) {
@@ -67,6 +75,11 @@ export function sellerWhere(user: Pick<User, "role" | "district">, f: SellerFilt
   }
   if (f.sector) and.push({ products: { some: { sectorId: f.sector } } });
   if (f.district) and.push({ district: f.district });
+  if (f.taluk) and.push({ taluk: f.taluk });
+  if (f.training === "unassigned") and.push({ status: "INITIAL_APPROVED", batches: { none: {} } });
+  if (f.training === "scheduled") and.push({ status: "INITIAL_APPROVED", batches: { some: { attendance: "PENDING" } } });
+  if (f.training === "absent") and.push({ status: "INITIAL_APPROVED", batches: { some: { attendance: "ABSENT" }, none: { attendance: "PENDING" } } });
+  if (f.training === "bypassed") and.push({ bypassed: true });
   if (f.exp === "yes") and.push({ exportExperience: true });
   if (f.exp === "no") and.push({ exportExperience: false });
   if (f.source === "SELF" || f.source === "DISTRICT" || f.source === "BULK") and.push({ source: f.source });

@@ -5,7 +5,7 @@ import { sellerRegNo } from "@/lib/config";
 import { nextSeq } from "@/lib/sequence";
 import type { SellerData } from "@/lib/seller-schema";
 
-/** Creates a seller record (status WITH_DISTRICT) with its sector products and a log entry. */
+/** Creates a seller record (status WITH_TALUK) with its sector products and a log entry. */
 export async function createSeller(
   tx: Prisma.TransactionClient, d: SellerData, source: SellerSource, actor: { id: string; role: "DISTRICT" } | null,
 ) {

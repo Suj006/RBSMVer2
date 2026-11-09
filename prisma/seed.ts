@@ -2,6 +2,7 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { TALUKS } from "../src/lib/kerala";
 
 const prisma = new PrismaClient({
   adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
@@ -12,6 +13,7 @@ const STAFF = [
   { username: "fieo", password: "pass@123", role: "FIEO", displayName: "FIEO Desk" },
   { username: "dic123", password: "dic123", role: "DIC", displayName: "Directorate of Industries & Commerce" },
   { username: "admin", password: "admin", role: "ADMIN", displayName: "Portal Administrator" },
+  { username: "training", password: "pass@123", role: "TRAINING", displayName: "Training Admin (Awareness Sessions)" },
 ] as const;
 
 // One login per District Industries Centre: dic-tvm … dic-ksd (phase-1 password pass@123).
@@ -100,13 +102,26 @@ async function main() {
       create: { username: `dic-${code}`, passwordHash: districtHash, role: "DISTRICT", district: name, displayName: `DIC ${name}` },
     });
   }
+  // One login per Taluk Industries Office: tlk-<taluk> (phase-1 password pass@123), e.g. tlk-aluva.
+  const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  let taluks = 0;
+  for (const [district, list] of Object.entries(TALUKS)) {
+    for (const taluk of list) {
+      await prisma.user.upsert({
+        where: { username: `tlk-${slug(taluk)}` },
+        update: { district, taluk },
+        create: { username: `tlk-${slug(taluk)}`, passwordHash: districtHash, role: "TALUK", district, taluk, displayName: `Taluk Industries Office, ${taluk}` },
+      });
+      taluks++;
+    }
+  }
   for (const [i, name] of SECTORS.entries()) {
     await prisma.sector.upsert({ where: { name }, update: {}, create: { name, sortOrder: i + 1 } });
   }
   for (const name of CERTIFICATIONS) {
     await prisma.certification.upsert({ where: { name }, update: {}, create: { name } });
   }
-  console.log(`Seeded ${STAFF.length} staff logins, ${DISTRICTS.length} district logins, ${SECTORS.length} sectors, ${CERTIFICATIONS.length} certifications.`);
+  console.log(`Seeded ${STAFF.length} staff logins, ${DISTRICTS.length} district logins, ${taluks} taluk logins, ${SECTORS.length} sectors, ${CERTIFICATIONS.length} certifications.`);
 }
 
 main().finally(() => prisma.$disconnect());

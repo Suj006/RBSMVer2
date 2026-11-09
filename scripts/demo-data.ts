@@ -194,18 +194,43 @@ async function main() {
   ];
   const FIRMS = ["Spices", "Coir Works", "Cashew Exports", "Agro Foods", "Handlooms", "Ayurveda", "Rubber Products", "Bamboo Crafts", "Tea Estates", "Seafoods", "Furniture", "Herbals"];
   const PEOPLE = ["Anil Kumar", "Suresh Nair", "Lakshmi Menon", "Joseph Thomas", "Fathima Beevi", "Rajesh Pillai", "Mini Joseph", "Abdul Rahman", "Deepa Varghese", "Vinod Krishnan"];
-  const STATES: ("WITH_DISTRICT" | "RECOMMENDED" | "RETURNED" | "APPROVED" | "REJECTED")[] = ["APPROVED", "APPROVED", "RECOMMENDED", "WITH_DISTRICT", "APPROVED", "RETURNED", "WITH_DISTRICT", "APPROVED", "RECOMMENDED", "REJECTED"];
+  type St = "WITH_TALUK" | "WITH_SELLER" | "NOT_RECOMMENDED" | "RECOMMENDED" | "RETURNED" | "INITIAL_APPROVED" | "TRAINED" | "APPROVED" | "REJECTED";
+  const STATES: St[] = ["APPROVED", "APPROVED", "RECOMMENDED", "WITH_TALUK", "APPROVED", "RETURNED", "INITIAL_APPROVED", "APPROVED", "TRAINED", "REJECTED", "NOT_RECOMMENDED", "INITIAL_APPROVED", "APPROVED", "WITH_TALUK"];
   const districtUsers = await prisma.user.findMany({ where: { role: "DISTRICT" } });
+  const talukUsers = await prisma.user.findMany({ where: { role: "TALUK" } });
+  const trainer = await prisma.user.findUnique({ where: { username: "training" } });
+  // Awareness sessions: one held per district (attendance marked), and two coming up for all districts.
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  let batchSeq = 0;
+  const mkBatch = async (district: string | null, date: Date, venue: string) => {
+    batchSeq++;
+    return prisma.trainingBatch.create({ data: { seq: batchSeq, date: ymd(date), startTime: "10:00", endTime: "13:00", venue, district, createdById: null,
+      name: `Batch ${String(batchSeq).padStart(2, "0")} · ${district ?? "All districts"} · ${new Date(ymd(date)).toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}` } });
+  };
+  const upcoming = [
+    await mkBatch(null, new Date(Date.now() + 9 * day), "Conference Hall, Directorate of Industries & Commerce, Thiruvananthapuram"),
+    await mkBatch(null, new Date(Date.now() + 16 * day), "KSIDC Hall, Kochi"),
+  ];
+  const held = new Map<string, Awaited<ReturnType<typeof mkBatch>>>();
   let sSeq = 0, sApproved = 0;
   for (const [di, [district, taluks]] of Object.entries(TALUKS).entries()) {
     const du = districtUsers.find((u) => u.district === district);
+    if (!held.has(district)) held.set(district, await mkBatch(district, new Date(Date.now() - (30 - di) * day), `District Industries Centre, ${district}`));
+    const heldBatch = held.get(district)!;
     const count = 8 + ((di * 5) % 7);
     for (let k = 0; k < count; k++) {
       sSeq++;
       const source = k % 4 === 0 ? "SELF" : k % 4 === 1 ? "BULK" : "DISTRICT";
       // Some online applications are back with the applicant for correction.
-      const status = source === "SELF" && STATES[(sSeq + di) % STATES.length] === "WITH_DISTRICT" && k % 8 === 0
+      const status: St = source === "SELF" && STATES[(sSeq + di) % STATES.length] === "WITH_TALUK" && k % 8 === 0
         ? "WITH_SELLER" : STATES[(sSeq + di) % STATES.length];
+      const taluk = taluks[k % 2];
+      const tu = talukUsers.find((u) => u.district === district && u.taluk === taluk);
+      const recommended = ["RECOMMENDED", "RETURNED", "INITIAL_APPROVED", "TRAINED", "APPROVED"].includes(status);
+      const initial = ["INITIAL_APPROVED", "TRAINED", "APPROVED"].includes(status);
+      // A few approved sellers were absent and approved by the Directorate without the session.
+      const bypassed = status === "APPROVED" && sSeq % 9 === 0;
+      const trained = status === "TRAINED" || (status === "APPROVED" && !bypassed);
       const firm = `${district.slice(0, 3)}${["ra", "vi", "ka", "na", "sha"][k % 5]} ${FIRMS[(sSeq + k) % FIRMS.length]}`;
       const created = new Date(Date.now() - (200 - sSeq) * day * 0.15);
       const mobile = `9${String(400000000 + sSeq * 7351).slice(0, 9)}`;
@@ -215,15 +240,15 @@ async function main() {
         sApproved++; aSeq = sApproved;
         approvedNo = `RBSM-Seller-2026${String(sApproved).padStart(3, "0")}`;
       }
-      // Approved sellers have a login; online applicants have one from registration.
-      if (status === "APPROVED" || source === "SELF") {
+      // Every seller has a login from registration (temporary until final approval).
+      {
         const u = await prisma.user.create({ data: { username: `Tradex2027-S${String(sSeq).padStart(3, "0")}`, passwordHash: hash, role: "SELLER", displayName: firm } });
         userId = u.id;
       }
       const seller = await prisma.seller.create({
         data: {
-          seq: sSeq, regNo: `RBSM-S-${String(sSeq).padStart(3, "0")}`, name: firm, district, taluk: taluks[k % 2],
-          ...localBody(district, taluks[k % 2], k),
+          seq: sSeq, regNo: `RBSM-S-${String(sSeq).padStart(3, "0")}`, name: firm, district, taluk,
+          ...localBody(district, taluk, k),
           iecNo: k % 3 !== 0 ? `${"ABCDEFGHJK"[sSeq % 10]}${"LMNPQRSTUV"[(sSeq * 3) % 10]}${"WXYZABCDEF"[(sSeq * 7) % 10]}PK${String(1000 + sSeq * 13).slice(-4)}${"QRSTUVWXYZ"[sSeq % 10]}` : (k % 6 === 3 ? `${"ABCDEFGHJK"[sSeq % 10]}MNPS${String(2000 + sSeq).slice(-4)}L` : null),
           certifications: JSON.stringify(SELLER_CERTS[sSeq % SELLER_CERTS.length]),
           exportCountries: JSON.stringify(k % 3 !== 0 ? EXPORT_MARKETS[sSeq % EXPORT_MARKETS.length] : []),
@@ -231,9 +256,11 @@ async function main() {
           udyamNo: `UDYAM-KL-${String(di + 1).padStart(2, "0")}-${String(1000000 + sSeq * 37).slice(0, 7)}`,
           exportExperience: k % 3 !== 0, contactName: person, contactMobile: mobile, contactWhatsapp: mobile,
           contactEmail: `${person.split(" ")[0].toLowerCase()}${sSeq}@msme.example`, source, createdById: source === "SELF" ? null : du?.id,
-          status, createdAt: created, recommendedAt: ["RECOMMENDED", "RETURNED", "APPROVED"].includes(status) ? after(created, 1 + (k % 4)) : null,
+          status, createdAt: created, recommendedAt: recommended ? after(created, 1 + (k % 4)) : null,
+          initialApprovedAt: initial ? after(created, 2 + (k % 4)) : null,
+          trainedAt: trained ? new Date(heldBatch.date + "T13:00:00Z") : null, bypassed,
           approvedAt: status === "APPROVED" ? after(created, 3 + (k % 4) + (sSeq % 3)) : null,
-          updatedAt: ["RECOMMENDED", "RETURNED", "APPROVED"].includes(status) ? after(created, 1 + (k % 4)) : created, approvedSeq: aSeq, approvedNo, userId,
+          updatedAt: recommended ? after(created, 1 + (k % 4)) : created, approvedSeq: aSeq, approvedNo, userId,
           products: {
             create: [0, 1].slice(0, 1 + (k % 2)).map((j) => {
               const sector = needSectors[(sSeq + j * 3) % needSectors.length];
@@ -243,16 +270,38 @@ async function main() {
           },
         },
       });
-      const slog = (action: string, actorId: string | null | undefined, actorRole: "DISTRICT" | "DIC" | null, comment?: string) =>
+      const slog = (action: string, actorId: string | null | undefined, actorRole: "DISTRICT" | "TALUK" | "DIC" | "TRAINING" | null, comment?: string) =>
         prisma.sellerLog.create({ data: { sellerId: seller.id, actorId: actorId ?? null, actorRole, action: action as never, createdAt: created, comment } });
       await slog("REGISTERED", source === "SELF" ? null : du?.id, source === "SELF" ? null : "DISTRICT", source === "SELF" ? "Self-registered on the portal" : source === "BULK" ? "Added by bulk upload" : undefined);
-      if (["RECOMMENDED", "RETURNED", "APPROVED"].includes(status)) await slog("RECOMMENDED", du?.id, "DISTRICT");
+      if (recommended) await slog("RECOMMENDED", tu?.id, "TALUK");
       if (status === "RETURNED") await slog("RETURNED", dic.id, "DIC", "Udyam certificate details do not match. Please verify.");
-      if (status === "APPROVED") await slog("APPROVED", dic.id, "DIC");
-      if (status === "WITH_SELLER") await slog("SENT_TO_SELLER", du?.id, "DISTRICT", "Please upload the correct Udyam number and add the products you can export.");
-      if (status === "REJECTED") await slog("REJECTED", du?.id, "DISTRICT", "Enterprise is not export-ready at present.");
+      if (status === "WITH_SELLER") await slog("SENT_TO_SELLER", tu?.id, "TALUK", "Please upload the correct Udyam number and add the products you can export.");
+      if (status === "NOT_RECOMMENDED") await slog("NOT_RECOMMENDED", tu?.id, "TALUK", "Unit not functional at the given address on verification.");
+      if (status === "REJECTED") { await slog("RECOMMENDED", tu?.id, "TALUK"); await slog("REJECTED", dic.id, "DIC", "Enterprise is not export-ready at present."); }
+      if (initial) await slog("INITIAL_APPROVED", dic.id, "DIC");
+      // Awareness sessions: attended the district session / absent / placed in an upcoming one / not yet placed.
+      const member = (batchId: string, attendance: "PENDING" | "PRESENT" | "ABSENT") => prisma.batchMember.create({ data: {
+        batchId, sellerId: seller.id, attendance, assignedById: du?.id ?? null, markedById: attendance === "PENDING" ? null : trainer?.id ?? null,
+        markedAt: attendance === "PENDING" ? null : new Date(heldBatch.date + "T13:00:00Z") } });
+      if (initial) {
+        if (trained) {
+          await member(heldBatch.id, "PRESENT");
+          await slog("BATCH_ASSIGNED", du?.id, "DISTRICT", `Placed in ${heldBatch.name}`);
+          await slog("ATTENDED", trainer?.id, "TRAINING");
+        } else if (bypassed || (status === "INITIAL_APPROVED" && k % 3 === 0)) {
+          await member(heldBatch.id, "ABSENT");
+          await slog("BATCH_ASSIGNED", du?.id, "DISTRICT", `Placed in ${heldBatch.name}`);
+          await slog("ABSENT", trainer?.id, "TRAINING");
+        } else if (status === "INITIAL_APPROVED" && k % 3 === 1) {
+          const ub = upcoming[sSeq % 2];
+          await member(ub.id, "PENDING");
+          await slog("BATCH_ASSIGNED", du?.id, "DISTRICT", `Placed in ${ub.name}`);
+        }
+      }
+      if (status === "APPROVED") await slog(bypassed ? "BYPASSED" : "APPROVED", dic.id, "DIC", bypassed ? "Unit in peak export season; promoter attended the earlier FIEO export orientation." : undefined);
     }
   }
+  await prisma.counter.upsert({ where: { name: "training-batch" }, create: { name: "training-batch", value: batchSeq }, update: { value: batchSeq } });
   await prisma.counter.upsert({ where: { name: "seller" }, create: { name: "seller", value: sSeq }, update: { value: sSeq } });
   await prisma.counter.upsert({ where: { name: "seller-approved-2026" }, create: { name: "seller-approved-2026", value: sApproved }, update: { value: sApproved } });
 
